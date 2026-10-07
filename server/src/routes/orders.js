@@ -380,6 +380,7 @@ router.post(
 /** POST /api/orders/:id/return — درخواست مرجوعی */
 router.post(
   '/:id/return',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'order-return' }),
   requireAuth,
   asyncHandler((req, res) => {
     const order = get('SELECT * FROM orders WHERE id = ? OR code = ?', req.params.id, req.params.id);
@@ -420,19 +421,48 @@ router.post(
 router.post(
   '/:id/reorder',
   requireAuth,
+  rateLimit({ max: 20, windowMs: 10 * 60_000, scope: 'order-reorder' }),
   asyncHandler((req, res) => {
     const order = get('SELECT * FROM orders WHERE id = ? OR code = ?', req.params.id, req.params.id);
     if (!order || order.user_id !== req.user.id) return fail(res, 'سفارش یافت نشد.', 404);
     const cart = getCart(req.user.id, null);
+
+    // سبد خرید بلافاصله پس از تسویه خالی می‌شود؛ اگر کاربر سبد فعال دارد،
+    // سقف تعداد اقلام همان سیاست افزودن به سبد (۲۰) رعایت می‌شود.
+    const MAX_CART_ITEMS = 20;
+    const current = get('SELECT COUNT(*) c FROM cart_items WHERE cart_id = ?', cart.id).c;
+    if (current >= MAX_CART_ITEMS) return fail(res, 'سبد خرید پر است؛ ابتدا برخی اقلام را حذف کنید.', 409);
+
+    let added = 0;
+    let skipped = 0;
     for (const item of all('SELECT * FROM order_items WHERE order_id = ?', order.id)) {
+      if (current + added >= MAX_CART_ITEMS) { skipped += 1; continue; }
       const product = get('SELECT * FROM products WHERE id = ?', item.product_id);
-      if (!product || product.status !== 'active' || product.stock <= 0) continue;
-      run(
-        'INSERT INTO cart_items (id,cart_id,product_id,qty,created_at) VALUES (?,?,?,?,?)',
-        uid('cit'), cart.id, product.id, Math.min(item.qty, product.stock), nowIso(),
+      if (!product || product.status !== 'active' || product.stock <= 0) { skipped += 1; continue; }
+      const qty = Math.max(1, Math.min(20, Number(item.qty) || 1, product.stock));
+      const existing = get(
+        `SELECT * FROM cart_items WHERE cart_id = ? AND product_id = ? AND COALESCE(variant_id,'') = ?`,
+        cart.id, product.id, item.variant_id || '',
       );
+      if (existing) {
+        const merged = Math.min(product.stock, Math.max(1, existing.qty + qty));
+        run('UPDATE cart_items SET qty = ? WHERE id = ?', merged, existing.id);
+      } else {
+        run(
+          'INSERT INTO cart_items (id,cart_id,product_id,variant_id,qty,created_at) VALUES (?,?,?,?,?,?)',
+          uid('cit'), cart.id, product.id, item.variant_id ?? null, qty, nowIso(),
+        );
+      }
+      added += 1;
     }
-    return ok(res, { message: 'محصولات سفارش قبلی به سبد خرید اضافه شد.', cart_id: cart.id });
+    if (!added) return fail(res, 'هیچ‌یک از اقلام این سفارش در حال حاضر قابل خرید نیست.', 409);
+    run('UPDATE carts SET updated_at = ? WHERE id = ?', nowIso(), cart.id);
+    return ok(res, {
+      message: `${added} قلم به سبد خرید اضافه شد${skipped ? ` (${skipped} قلم ناموجود/نامعتبر نادیده گرفته شد)` : ''}.`,
+      added,
+      skipped,
+      cart_id: cart.id,
+    });
   }),
 );
 

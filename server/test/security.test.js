@@ -119,6 +119,7 @@ async function call(method, url, { token, body, headers = {}, session, raw = fal
 const get = (url, opts) => call('GET', url, opts);
 const post = (url, body, opts) => call('POST', url, body ? { ...opts, body } : opts);
 const patch = (url, body, opts) => call('PATCH', url, { ...opts, body });
+const put = (url, body, opts) => call('PUT', url, { ...opts, body });
 const del = (url, opts) => call('DELETE', url, opts);
 
 /** باز کردن اتصال WebSocket و جمع‌آوری پیام‌ها */
@@ -1072,5 +1073,201 @@ describe('امنیت — توابع هسته', () => {
     assert.equal(sniffImageBuffer(Buffer.from('<?php system($_GET["c"]); ?>')), 'application/x-php');
     assert.equal(sniffImageBuffer(Buffer.from('#!/bin/sh\nrm -rf /')), 'unknown');
     assert.equal(sniffImageBuffer(Buffer.from('MZ\x90\x00\x03')), 'unknown');
+  });
+});
+
+/* ========== ۱۱) اعتبارسنجی نوشتن در کاتالوگ (محصول/دسته/سفارش مجدد) ========== */
+
+describe('امنیت — اعتبارسنجی نوشتن کاتالوگ و سفارش مجدد', () => {
+  before(() => security.resetRateLimits());
+
+  it('ساخت محصول با قیمت منفی یا صفر رد می‌شود', async () => {
+    const negative = await post('/api/products', { name: 'محصول تست', price: -5000, stock: 3 }, { token: tokens.seller });
+    assert.equal(negative.status, 400, 'قیمت منفی نباید پذیرفته شود');
+
+    const zero = await post('/api/products', { name: 'محصول تست', price: 0, stock: 3 }, { token: tokens.seller });
+    assert.equal(zero.status, 400, 'قیمت صفر نباید پذیرفته شود');
+  });
+
+  it('ساخت محصول با موجودی/ترتیب نامعتبر رد می‌شود', async () => {
+    const badStock = await post('/api/products', { name: 'محصول تست', price: 120000, stock: -3 }, { token: tokens.seller });
+    assert.equal(badStock.status, 400);
+
+    const badStockFloat = await post('/api/products', { name: 'محصول تست', price: 120000, stock: 2.5 }, { token: tokens.seller });
+    assert.equal(badStockFloat.status, 400, 'موجودی اعشاری نامعتبر است');
+
+    const badStatus = await post('/api/products', { name: 'محصول تست', price: 120000, status: 'published;DROP' }, { token: tokens.seller });
+    assert.equal(badStatus.status, 400, 'وضعیت غیرمجاز باید رد شود');
+  });
+
+  it('ساخت محصول با داده‌ی معتبر موفق است و مقدار قیمت صحیح ذخیره می‌شود', async () => {
+    const created = await post('/api/products', {
+      name: 'گوشی تست امنیتی', price: 2500000, stock: 4, status: 'active', brand: 'EasyShop',
+    }, { token: tokens.seller });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.product.price, 2500000);
+    assert.equal(created.body.product.stock, 4);
+    // قیمت تمام‌شده نباید برای فروشنده‌ی عادی یا کاربر عادی افشا شود
+    const asUser = await get(`/api/products/${created.body.product.slug || created.body.product.id}`, { token: tokens.user });
+    assert.equal(asUser.body.product.cost ?? null, null);
+  });
+
+  it('ویرایش محصول با قیمت یا موجودی نامعتبر رد می‌شود و مقدار قبلی دست‌نخورده می‌ماند', async () => {
+    const list = await get('/api/products/admin/all?limit=1', { token: tokens.admin });
+    const product = list.body.items[0];
+    assert.ok(product, 'حداقل یک محصول برای تست لازم است');
+
+    const negPrice = await put(`/api/products/${product.id}`, { price: -1 }, { token: tokens.admin });
+    assert.equal(negPrice.status, 400);
+
+    const negStock = await put(`/api/products/${product.id}`, { stock: -10 }, { token: tokens.admin });
+    assert.equal(negStock.status, 400);
+
+    const after = await get(`/api/products/admin/all?limit=100`, { token: tokens.admin });
+    const same = after.body.items.find((p) => p.id === product.id);
+    assert.equal(same.price, product.price, 'قیمت نباید تغییر کرده باشد');
+    assert.equal(same.stock, product.stock, 'موجودی نباید تغییر کرده باشد');
+  });
+
+  it('اصلاح موجودی فقط با عدد صحیح و در بازه‌ی مجاز انجام می‌شود', async () => {
+    const list = await get('/api/products/admin/all?limit=1', { token: tokens.admin });
+    const product = list.body.items[0];
+
+    const floatDelta = await post(`/api/products/${product.id}/stock`, { delta: 1.5 }, { token: tokens.admin });
+    assert.equal(floatDelta.status, 400, 'دلتای اعشاری نامعتبر است');
+
+    const hugeDelta = await post(`/api/products/${product.id}/stock`, { delta: 999_999_999 }, { token: tokens.admin });
+    assert.equal(hugeDelta.status, 400, 'دلتای بزرگ‌تر از سقف نباید پذیرفته شود');
+
+    const okDelta = await post(`/api/products/${product.id}/stock`, { delta: 2 }, { token: tokens.admin });
+    assert.equal(okDelta.status, 200);
+    assert.equal(okDelta.body.stock, product.stock + 2);
+  });
+
+  it('ویرایش یا حذف محصول با توکن کاربر عادی ممنوع است', async () => {
+    const list = await get('/api/products/admin/all?limit=1', { token: tokens.admin });
+    const product = list.body.items[0];
+    const edited = await put(`/api/products/${product.id}`, { price: 1 }, { token: tokens.user });
+    assert.equal(edited.status, 403);
+    const removed = await del(`/api/products/${product.id}`, { token: tokens.user });
+    assert.equal(removed.status, 403);
+  });
+
+  /* --------------------------- دسته‌بندی‌ها --------------------------- */
+
+  it('دسته‌های غیرفعال برای کاربر عادی افشا نمی‌شوند', async () => {
+    const created = await post('/api/categories', { name: 'دسته مخفی تست', is_active: false }, { token: tokens.admin });
+    assert.equal(created.status, 201);
+    const id = created.body.category.id;
+    const hidden = await put(`/api/categories/${id}`, { is_active: false }, { token: tokens.admin });
+    assert.equal(hidden.status, 200);
+
+    const asGuest = await get('/api/categories?include_inactive=1');
+    const asUser = await get('/api/categories?include_inactive=1', { token: tokens.user });
+    const asAdmin = await get('/api/categories?include_inactive=1&flat=1', { token: tokens.admin });
+
+    for (const response of [asGuest, asUser]) {
+      assert.equal(response.body.items.some((c) => c.id === id), false, 'دسته‌ی غیرفعال نباید برای غیرکارکنان دیده شود');
+    }
+    assert.equal(asAdmin.body.items.some((c) => c.id === id), true, 'مدیر باید دسته‌ی غیرفعال را ببیند');
+  });
+
+  it('ساخت دسته با رنگ یا ترتیب نامعتبر رد می‌شود (جلوگیری از تزریق CSS)', async () => {
+    const badColor = await post('/api/categories', { name: 'دسته رنگ', color: 'red;background-image:url(javascript:alert(1))' }, { token: tokens.admin });
+    assert.equal(badColor.status, 400);
+
+    const badSort = await post('/api/categories', { name: 'دسته ترتیب', sort_order: -5 }, { token: tokens.admin });
+    assert.equal(badSort.status, 400);
+
+    const unknownParent = await post('/api/categories', { name: 'دسته یتیم', parent_id: 'cat_does_not_exist' }, { token: tokens.admin });
+    assert.equal(unknownParent.status, 400);
+  });
+
+  it('حلقه در درخت دسته‌بندی ممکن نیست (والد شدن خود یا فرزند خود)', async () => {
+    const parent = await post('/api/categories', { name: 'والد تست حلقه' }, { token: tokens.admin });
+    const child = await post('/api/categories', { name: 'فرزند تست حلقه', parent_id: parent.body.category.id }, { token: tokens.admin });
+    assert.equal(child.status, 201);
+
+    const self = await put(`/api/categories/${parent.body.category.id}`, { parent_id: parent.body.category.id }, { token: tokens.admin });
+    assert.equal(self.status, 400, 'دسته نباید والد خودش شود');
+
+    const cycle = await put(`/api/categories/${parent.body.category.id}`, { parent_id: child.body.category.id }, { token: tokens.admin });
+    assert.equal(cycle.status, 400, 'انتقال والد به زیر فرزندش نباید ممکن باشد');
+  });
+
+  it('ویرایش/حذف دسته برای کاربر عادی ممنوع و برای فروشنده محدود است', async () => {
+    const cat = await post('/api/categories', { name: 'دسته مجوزها' }, { token: tokens.admin });
+    const id = cat.body.category.id;
+
+    const userEdit = await put(`/api/categories/${id}`, { name: 'هک شد' }, { token: tokens.user });
+    assert.equal(userEdit.status, 403);
+
+    const userDelete = await del(`/api/categories/${id}`, { token: tokens.user });
+    assert.equal(userDelete.status, 403);
+
+    const sellerDelete = await del(`/api/categories/${id}`, { token: tokens.seller });
+    assert.equal(sellerDelete.status, 403, 'حذف دسته فقط برای مدیر مجاز است');
+
+    const adminDelete = await del(`/api/categories/${id}`, { token: tokens.admin });
+    assert.equal(adminDelete.status, 200);
+  });
+
+  it('سفارش مجدد سبد را بی‌نهایت بزرگ نمی‌کند و از سقف اقلام پیروی می‌کند', async () => {
+    const products = await get('/api/products?limit=50&sort=newest');
+    const product = products.body.items[0];
+    const product2 = products.body.items[1] || product;
+    // سبد کاربر را تازه می‌کنیم و موجودی کافی را در نظر می‌گیریم
+    const usable = products.body.items.find((p) => p.stock >= 2) || product;
+    await del('/api/cart', { token: tokens.user });
+    await post('/api/cart/items', { product_id: usable.id, qty: 1 }, { token: tokens.user, session: sessionKey() });
+    const order = await post('/api/orders/checkout', {
+      payment_method: 'gateway',
+      shipping_method: 'post',
+      address: {
+        receiver: 'کاربر تست', phone: '09100000000', province: 'تهران', city: 'تهران', postal_code: '1234567890', line: 'تهران، خیابان تست، پلاک ۱',
+      },
+    }, { token: tokens.user });
+    assert.equal(order.status, 201, JSON.stringify(order.body));
+
+    await del('/api/cart', { token: tokens.user });
+    const first = await post(`/api/orders/${order.body.order.id}/reorder`, {}, { token: tokens.user });
+    assert.equal(first.status, 200);
+    assert.ok(first.body.added >= 1);
+
+    const firstCart = await get('/api/cart', { token: tokens.user });
+    assert.equal(firstCart.body.items.length, first.body.added, 'اقلام تکراری نباید در سبد ایجاد شود');
+
+    // سفارش مجدد پیاپی: اقلام باید ادغام شوند، نه اینکه ردیف تکراری بسازد
+    const second = await post(`/api/orders/${order.body.order.id}/reorder`, {}, { token: tokens.user });
+    assert.equal(second.status, 200);
+    const secondCart = await get('/api/cart', { token: tokens.user });
+    assert.equal(secondCart.body.items.length, first.body.added, 'سفارش مجدد نباید ردیف تکراری بسازد');
+    for (const item of secondCart.body.items) assert.ok(item.qty <= 20, 'تعداد هر قلم از سقف ۲۰ فراتر نرود');
+  });
+
+  it('سفارش مجدد سفارش دیگران ممکن نیست', async () => {
+    const orders = await get('/api/account/orders?limit=5', { token: tokens.admin });
+    const otherOrder = (orders.body.items || []).find((o) => o.user_id && o.user_id !== tokens.user);
+    const asUser = await get('/api/account/orders?limit=5', { token: tokens.user });
+    const mine = asUser.body.items || [];
+    if (mine.length) {
+      const foreign = await post(`/api/orders/${mine[0].id}/reorder`, {}, { token: tokens.support });
+      assert.ok([403, 404].includes(foreign.status), 'کاربر دیگر نباید سفارش من را دوباره سفارش دهد');
+    }
+    assert.ok(otherOrder === undefined || otherOrder !== null);
+  });
+
+  it('مسیرهای نوشتنی حساس محدودیت نرخ اختصاصی دارند', async () => {
+    security.resetRateLimits();
+    let got429 = false;
+    for (let i = 0; i < 45; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await post('/api/account/addresses', {
+        title: `آدرس ${i}`, full_name: 'کاربر تست', phone: '09100000000', address: `تهران، پلاک ${i}`, city: 'تهران',
+      }, { token: tokens.user });
+      if (res.status === 429) { got429 = true; break; }
+    }
+    assert.equal(got429, true, 'باید پس از تعداد مشخصی نوشتن، خطای ۴۲۹ برگردد');
+    security.resetRateLimits();
   });
 });

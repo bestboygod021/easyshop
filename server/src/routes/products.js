@@ -7,6 +7,41 @@ import { cleanText, rateLimit } from '../middleware/security.js';
 
 const router = express.Router();
 
+const PRODUCT_STATUSES = ['active', 'draft', 'archived', 'out_of_stock'];
+const num = (v, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
+const isInt = (v) => Number.isInteger(Number(v));
+
+/** اعتبارسنجی مقادیر مالی/انبار (جلوگیری از قیمت یا موجودی منفی/نامعتبر) */
+function validateProductNumbers(b) {
+  if (b.price !== undefined) {
+    const price = num(b.price, NaN);
+    if (!Number.isFinite(price) || price < 0 || price > 10_000_000_000) return 'قیمت محصول نامعتبر است.';
+  }
+  if (b.compare_at_price !== undefined && b.compare_at_price !== null && b.compare_at_price !== '') {
+    const cap = num(b.compare_at_price, NaN);
+    if (!Number.isFinite(cap) || cap <= 0) return 'قیمت قبل از تخفیف نامعتبر است.';
+  }
+  for (const field of ['stock', 'low_stock_threshold', 'shipping_days']) {
+    if (b[field] !== undefined && (!isInt(b[field]) || Number(b[field]) < 0)) return `${field} نامعتبر است.`;
+  }
+  if (b.cost !== undefined && b.cost !== null && b.cost !== '') {
+    const cost = num(b.cost, NaN);
+    if (!Number.isFinite(cost) || cost < 0) return 'قیمت تمام‌شده نامعتبر است.';
+  }
+  if (b.status !== undefined && !PRODUCT_STATUSES.includes(b.status)) return 'وضعیت محصول نامعتبر است.';
+  if (b.images !== undefined) {
+    if (!Array.isArray(b.images) || b.images.length > 12) return 'حداکثر ۱۲ تصویر مجاز است.';
+    if (b.images.some((u) => typeof u !== 'string' || u.length > 500)) return 'آدرس تصویر نامعتبر است.';
+  }
+  if (b.variants !== undefined) {
+    if (!Array.isArray(b.variants) || b.variants.length > 30) return 'حداکثر ۳۰ تنوع مجاز است.';
+    for (const v of b.variants) {
+      if (Number(v?.stock) < 0 || Number(v?.price_delta) < -10_000_000_000) return 'مقادیر تنوع نامعتبر است.';
+    }
+  }
+  return null;
+}
+
 /** GET /api/products — فهرست محصولات با فیلتر، جستجو، مرتب‌سازی و صفحه‌بندی */
 router.get(
   '/',
@@ -204,9 +239,14 @@ router.post(
   '/',
   requireAuth,
   requireRole('admin', 'seller'),
+  rateLimit({ ...config.security.rateLimits.write, scope: 'product-create' }),
   asyncHandler((req, res) => {
     const b = req.body || {};
-    if (!b.name || !b.price) return fail(res, 'نام و قیمت محصول الزامی است.');
+    if (!cleanText(b.name, { max: 200, multiline: false })) return fail(res, 'نام و قیمت محصول الزامی است.');
+    const numbersError = validateProductNumbers(b);
+    if (numbersError) return fail(res, numbersError);
+    const priceValue = num(b.price, 0);
+    if (priceValue <= 0) return fail(res, 'قیمت محصول باید بزرگ‌تر از صفر باشد.');
     const id = uid('prd');
     const slug = String(b.slug || b.name).trim().toLowerCase().replace(/\s+/g, '-').replace(/[^\p{L}\p{N}-]/gu, '') || id;
     if (get('SELECT id FROM products WHERE slug = ?', slug)) return fail(res, 'این نامک (slug) قبلاً استفاده شده است.');
@@ -220,9 +260,9 @@ router.post(
       id,
       b.sku || `ES-${id.slice(-6).toUpperCase()}`,
       slug,
-      b.name,
-      b.name_en ?? null,
-      b.brand ?? null,
+      cleanText(b.name, { max: 200, multiline: false }),
+      cleanText(b.name_en, { max: 200, multiline: false }) || null,
+      cleanText(b.brand, { max: 80, multiline: false }) || null,
       b.category_id ?? null,
       Math.round(Number(b.price) || 0),
       b.compare_at_price ? Math.round(Number(b.compare_at_price)) : null,
@@ -265,10 +305,13 @@ router.put(
   '/:id',
   requireAuth,
   requireRole('admin', 'seller'),
+  rateLimit({ ...config.security.rateLimits.write, scope: 'product-update' }),
   asyncHandler((req, res) => {
     const product = get('SELECT * FROM products WHERE id = ? OR slug = ?', req.params.id, req.params.id);
     if (!product) return fail(res, 'محصول یافت نشد.', 404);
     const b = req.body || {};
+    const numbersError = validateProductNumbers(b);
+    if (numbersError) return fail(res, numbersError);
     const fields = {
       name_fa: b.name,
       name_en: b.name_en,
@@ -314,6 +357,7 @@ router.delete(
   '/:id',
   requireAuth,
   requireRole('admin'),
+  rateLimit({ ...config.security.rateLimits.write, scope: 'product-archive' }),
   asyncHandler((req, res) => {
     const product = get('SELECT id FROM products WHERE id = ? OR slug = ?', req.params.id, req.params.id);
     if (!product) return fail(res, 'محصول یافت نشد.', 404);
@@ -327,15 +371,20 @@ router.post(
   '/:id/stock',
   requireAuth,
   requireRole('admin', 'seller'),
+  rateLimit({ ...config.security.rateLimits.write, scope: 'product-stock' }),
   asyncHandler((req, res) => {
     const product = get('SELECT * FROM products WHERE id = ? OR slug = ?', req.params.id, req.params.id);
     if (!product) return fail(res, 'محصول یافت نشد.', 404);
-    const delta = Math.round(Number(req.body?.delta) || 0);
+    const raw = req.body?.delta;
+    if (!isInt(raw)) return fail(res, 'مقدار تغییر موجودی باید عدد صحیح باشد.');
+    const delta = Math.trunc(Number(raw));
+    if (Math.abs(delta) > 1_000_000) return fail(res, 'مقدار تغییر موجودی بیش از حد مجاز است.');
     const stock = Math.max(0, product.stock + delta);
     run('UPDATE products SET stock = ?, updated_at = ? WHERE id = ?', stock, nowIso(), product.id);
     run(
       'INSERT INTO inventory_movements (id,product_id,delta,reason,ref,user_id,created_at) VALUES (?,?,?,?,?,?,?)',
-      uid('inv'), product.id, delta, req.body?.reason || 'اصلاح موجودی', req.body?.ref ?? null, req.user.id, nowIso(),
+      uid('inv'), product.id, delta, cleanText(req.body?.reason, { max: 200, multiline: false }) || 'اصلاح موجودی',
+      cleanText(req.body?.ref, { max: 100, multiline: false }) || null, req.user.id, nowIso(),
     );
     return ok(res, { stock });
   }),

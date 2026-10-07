@@ -162,6 +162,7 @@ router.post(
 /** PATCH /api/chat/conversations/:id — وضعیت/مسئول/موضوع */
 router.patch(
   '/conversations/:id',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'chat-update' }),
   requireAuth,
   requireRole('support', 'admin'),
   asyncHandler((req, res) => {

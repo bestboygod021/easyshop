@@ -93,6 +93,7 @@ router.get(
 /** PUT /api/ai/providers/:slug — ذخیره کلید API و تنظیمات مدل */
 router.put(
   '/providers/:slug',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'ai-provider-update' }),
   requireAuth,
   requireRole('admin'),
   asyncHandler((req, res) => {
@@ -170,6 +171,7 @@ router.post(
 /** PUT /api/ai/settings */
 router.put(
   '/settings',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'ai-settings' }),
   requireAuth,
   requireRole('admin'),
   asyncHandler((req, res) => {
@@ -458,6 +460,7 @@ router.get(
 /** POST /api/ai/generations/:id/publish — تبدیل پیش‌نویس به محصول */
 router.post(
   '/generations/:id/publish',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'ai-publish' }),
   requireAuth,
   requireRole('admin', 'seller'),
   asyncHandler((req, res) => {
@@ -493,6 +496,7 @@ router.post(
 
 router.delete(
   '/generations/:id',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'ai-generation-delete' }),
   requireAuth,
   requireRole('admin', 'seller'),
   asyncHandler((req, res) => {

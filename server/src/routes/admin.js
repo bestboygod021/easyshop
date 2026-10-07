@@ -157,6 +157,7 @@ router.get(
 
 router.post(
   '/users',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'admin-user-create' }),
   requireRole('admin'),
   asyncHandler((req, res) => {
     const email = String(req.body?.email || '').trim().toLowerCase().slice(0, 160);
@@ -179,6 +180,7 @@ router.post(
 
 router.patch(
   '/users/:id',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'admin-user-update' }),
   requireRole('admin'),
   asyncHandler((req, res) => {
     const user = get('SELECT * FROM users WHERE id = ?', req.params.id);
@@ -247,6 +249,7 @@ router.patch(
 
 router.delete(
   '/users/:id',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'admin-user-delete' }),
   requireRole('admin'),
   asyncHandler((req, res) => {
     if (req.params.id === req.user.id) return fail(res, 'نمی‌توانید حساب خودتان را حذف کنید.');
@@ -301,6 +304,7 @@ router.get(
 
 router.patch(
   '/orders/:id',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'admin-order-action' }),
   asyncHandler((req, res) => {
     const order = get('SELECT * FROM orders WHERE id = ? OR code = ?', req.params.id, req.params.id);
     if (!order) return fail(res, 'سفارش یافت نشد.', 404);
@@ -361,6 +365,7 @@ router.get(
 
 router.post(
   '/coupons',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'admin-coupon-create' }),
   requireRole('admin'),
   asyncHandler((req, res) => {
     const { code, type = 'percent', value = 0, min_subtotal = 0, max_discount, usage_limit, per_user_limit = 1, starts_at, ends_at, description } = req.body || {};
@@ -381,6 +386,7 @@ router.post(
 
 router.patch(
   '/coupons/:id',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'admin-coupon-update' }),
   requireRole('admin'),
   asyncHandler((req, res) => {
     const coupon = get('SELECT * FROM coupons WHERE id = ?', req.params.id);
@@ -446,6 +452,7 @@ router.get(
 
 router.patch(
   '/reviews/:id',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'admin-review-action' }),
   asyncHandler((req, res) => {
     const review = get('SELECT * FROM reviews WHERE id = ?', req.params.id);
     if (!review) return fail(res, 'نظر یافت نشد.', 404);
@@ -470,6 +477,7 @@ router.get(
 
 router.put(
   '/settings',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'admin-settings' }),
   requireRole('admin'),
   asyncHandler((req, res) => {
     const payload = req.body?.settings || req.body || {};
@@ -572,6 +580,7 @@ router.get(
 /* --------------------------- اعلان همگانی/پیامک -------------------------- */
 router.post(
   '/broadcast',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'admin-broadcast' }),
   requireRole('admin'),
   asyncHandler((req, res) => {
     const { title, body, role = 'customer', link } = req.body || {};

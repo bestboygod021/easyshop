@@ -188,6 +188,7 @@ router.post(
 /** PATCH /api/tickets/:id — تغییر وضعیت/اولویت/مسئول (کارمندان) */
 router.patch(
   '/:id',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'ticket-update' }),
   requireAuth,
   requireRole('support', 'admin', 'seller'),
   asyncHandler((req, res) => {

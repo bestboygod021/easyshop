@@ -16,6 +16,7 @@ router.get(
 
 router.post(
   '/addresses',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'account-address-create' }),
   asyncHandler((req, res) => {
     const isDefault = Boolean(req.body?.is_default);
     const receiver = cleanText(req.body?.receiver, { max: 80, multiline: false });
@@ -44,6 +45,7 @@ router.post(
 
 router.put(
   '/addresses/:id',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'account-address-update' }),
   asyncHandler((req, res) => {
     const addr = get('SELECT * FROM addresses WHERE id = ? AND user_id = ?', req.params.id, req.user.id);
     if (!addr) return fail(res, 'آدرس یافت نشد.', 404);
@@ -70,6 +72,7 @@ router.put(
 
 router.delete(
   '/addresses/:id',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'account-address-delete' }),
   asyncHandler((req, res) => {
     run('DELETE FROM addresses WHERE id = ? AND user_id = ?', req.params.id, req.user.id);
     return ok(res, { message: 'آدرس حذف شد.' });
@@ -201,6 +204,7 @@ router.get(
 
 router.post(
   '/notifications/read',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'account-notif-read' }),
   asyncHandler((req, res) => {
     if (req.body?.id) run('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?', req.body.id, req.user.id);
     else run('UPDATE notifications SET is_read = 1 WHERE user_id = ?', req.user.id);

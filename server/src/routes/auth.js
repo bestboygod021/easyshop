@@ -92,6 +92,7 @@ router.post(
 
 router.post(
   '/logout',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'auth-logout' }),
   asyncHandler((req, res) => {
     const { refreshToken } = req.body || {};
     if (refreshToken) {

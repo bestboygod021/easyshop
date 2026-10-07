@@ -112,6 +112,7 @@ router.delete(
 /** DELETE /api/cart — خالی کردن سبد */
 router.delete(
   '/',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'cart-clear' }),
   optionalAuth,
   asyncHandler((req, res) => {
     const cart = getCart(req.user?.id ?? null, sessionOf(req), { create: false });
