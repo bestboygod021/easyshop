@@ -1,0 +1,82 @@
+{
+  "name": "@easyshop/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "نسخه ویندوز (و مک/لینوکس) فروشگاه EasyShop بر پایه Electron",
+  "main": "main.cjs",
+  "author": "EasyShop",
+  "license": "MIT",
+  "scripts": {
+    "dev": "cross-env EASYSHOP_DEV=1 electron .",
+    "start": "electron .",
+    "dist": "electron-builder --win --x64",
+    "dist:all": "electron-builder -mwl",
+    "pack": "electron-builder --dir"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "ir.easyshop.desktop",
+    "productName": "EasyShop",
+    "copyright": "EasyShop © 2026",
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "resources/icon.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../server",
+        "to": "server",
+        "filter": [
+          "**/*",
+          "!data/*.db*",
+          "!**/node_modules/.cache/**"
+        ]
+      },
+      {
+        "from": "../web/dist",
+        "to": "web/dist",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "resources/icon.png",
+      "artifactName": "EasyShop-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "EasyShop",
+      "installerLanguages": ["fa_IR", "en_US"],
+      "language": "1065"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "resources/icon.png",
+      "category": "public.app-category.shopping"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "resources/icon.png",
+      "category": "Shopping"
+    }
+  }
+}

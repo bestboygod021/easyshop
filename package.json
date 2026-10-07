@@ -1,0 +1,36 @@
+{
+  "name": "easyshop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EasyShop — پلتفرم فروشگاهی چندسکویی (وب، iOS، اندروید، ویندوز) با بک‌اند کامل، پنل مدیریت، پشتیبانی زنده و موتور هوش مصنوعی چندمدلی",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm --workspace server run dev",
+    "dev:web": "npm --workspace web run dev",
+    "start": "npm --workspace server start",
+    "build": "npm --workspace web run build",
+    "seed": "npm --workspace server run seed",
+    "test": "npm --workspace server run test",
+    "preview": "npm run build && npm --workspace server start",
+    "desktop:install": "cd desktop && npm install",
+    "desktop:dev": "cd desktop && npm run dev",
+    "desktop:build": "npm run build && cd desktop && npm run dist",
+    "mobile:install": "cd mobile && npm install",
+    "mobile:add:ios": "cd mobile && npx cap add ios",
+    "mobile:add:android": "cd mobile && npx cap add android",
+    "mobile:sync": "npm run build && cd mobile && npx cap sync",
+    "test:security": "node --test server/test/security.test.js",
+    "pentest": "node tools/pentest.mjs",
+    "security": "npm run test:security && npm run pentest"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=20.11"
+  }
+}

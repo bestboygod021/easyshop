@@ -1,0 +1,46 @@
+# وابستگی‌ها
+node_modules/
+*/node_modules/
+**/node_modules/
+
+# خروجی ساخت
+dist/
+web/dist/
+desktop/dist/
+desktop/release/
+desktop/out/
+mobile/www/
+
+# بیلدهای بومی Capacitor
+mobile/ios/App/Pods/
+mobile/ios/App/build/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/local.properties
+mobile/ios/App/App/public/
+
+# داده و فایل‌های موقت سرور
+server/data/*.db
+server/data/*.db-journal
+server/data/*.db-wal
+server/data/*.db-shm
+server/data/uploads/*
+!server/data/uploads/.gitkeep
+
+# محیط و لاگ
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+
+# سیستمی
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# خروجی ابزارها
+server/data/pentest-report.json

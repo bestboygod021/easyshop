@@ -1,0 +1,26 @@
+{
+  "name": "@easyshop/server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "EasyShop API — بک‌اند فروشگاه (Express + SQLite + WebSocket + AI Gateway)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "seed": "node src/db/seed.js --force",
+    "test": "node --test test/*.test.js",
+    "test:security": "node --test test/security.test.js",
+    "pentest": "node ../tools/pentest.mjs"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "ws": "^8.18.0"
+  }
+}

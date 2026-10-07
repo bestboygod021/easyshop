@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="fa" dir="rtl" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5" />
+    <meta name="theme-color" content="#6366f1" />
+    <meta name="description" content="فروشگاه آنلاین EasyShop — خرید آسان، امن و سریع با دستیار هوشمند هوش مصنوعی؛ نسخه وب، iOS، اندروید و ویندوز." />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="EasyShop" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <title>EasyShop | فروشگاه هوشمند آنلاین</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      html, body, #root { height: 100%; }
+      body { background: #080c1a; margin: 0; }
+      .boot-splash {
+        display: grid; place-items: center; height: 100%; color: #a5b4fc;
+        font-family: Vazirmatn, Tahoma, sans-serif; gap: 12px; text-align: center;
+      }
+      .boot-spinner {
+        width: 42px; height: 42px; border-radius: 50%;
+        border: 3px solid rgba(165,180,252,.25); border-top-color: #a5b4fc; animation: spin 1s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="boot-splash" id="boot-splash">
+        <div class="boot-spinner"></div>
+        <div>در حال بارگذاری فروشگاه EasyShop…</div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
