@@ -428,9 +428,9 @@ export function seedDemoData() {
         uid('oev'), id, 'paid', 'پرداخت با موفقیت انجام شد.', 'درگاه پرداخت', placedAt,
       );
       run(
-        `INSERT INTO payments (id,order_id,provider,amount,status,ref_id,created_at,verified_at)
-         VALUES (?,?,?,?,?,?,?,?)`,
-        uid('pay'), id, 'mock', total, 'paid', `RF${rnd(1000000, 9999999)}`, placedAt, placedAt,
+        `INSERT INTO payments (id,order_id,provider,amount,status,applied,ref_id,created_at,verified_at)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
+        uid('pay'), id, 'mock', total, 'paid', 1, `RF${rnd(1000000, 9999999)}`, placedAt, placedAt,
       );
     }
     if (status === 'shipped' || status === 'delivered') {

@@ -205,6 +205,9 @@ CREATE TABLE IF NOT EXISTS orders (
   customer_note TEXT,
   admin_note    TEXT,
   loyalty_used  INTEGER NOT NULL DEFAULT 0,
+  loyalty_reserved INTEGER NOT NULL DEFAULT 0,
+  coupon_reserved INTEGER NOT NULL DEFAULT 0,
+  checkout_key TEXT UNIQUE,
   placed_at     TEXT NOT NULL,
   paid_at       TEXT,
   shipped_at    TEXT,
@@ -223,6 +226,7 @@ CREATE TABLE IF NOT EXISTS order_items (
   name_en    TEXT,
   sku        TEXT,
   thumbnail  TEXT,
+  variant_id TEXT,
   variant_name TEXT,
   unit_price INTEGER NOT NULL,
   qty        INTEGER NOT NULL,
@@ -245,12 +249,32 @@ CREATE TABLE IF NOT EXISTS payments (
   provider    TEXT NOT NULL DEFAULT 'mock',
   amount      INTEGER NOT NULL,
   status      TEXT NOT NULL DEFAULT 'pending',   -- pending|paid|failed|refunded
+  applied     INTEGER NOT NULL DEFAULT 0,        -- پرداختی که تسویه‌ی سفارش را انجام داده است
   authority   TEXT,
   ref_id      TEXT,
   payload     TEXT,
+  redirect_url TEXT,
+  expires_at TEXT,
+  failure_reason TEXT,
+  card_mask   TEXT,
+  card_hash   TEXT,
   created_at  TEXT NOT NULL,
   verified_at TEXT
 );
+CREATE TABLE IF NOT EXISTS payment_callback_events (
+  id              TEXT PRIMARY KEY,
+  provider        TEXT NOT NULL,
+  callback_status TEXT,
+  result          TEXT NOT NULL DEFAULT 'received',
+  target_type     TEXT,
+  target_id       TEXT,
+  error_code      TEXT,
+  duration_ms     INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_payment_callback_target ON payment_callback_events(target_type,target_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_callback_result ON payment_callback_events(result,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_callback_created ON payment_callback_events(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS reviews (
   id            TEXT PRIMARY KEY,
@@ -384,14 +408,16 @@ CREATE TABLE IF NOT EXISTS wallet_topups (
   user_id     TEXT NOT NULL,
   amount      INTEGER NOT NULL,
   status      TEXT NOT NULL DEFAULT 'pending',
+  idempotency_key TEXT UNIQUE,
   gateway     TEXT,
   authority   TEXT,
   ref_id      TEXT,
   ip          TEXT,
+  redirect_url TEXT,
+  expires_at TEXT,
   created_at  TEXT NOT NULL,
   verified_at TEXT
 );
-
 CREATE TABLE IF NOT EXISTS checkout_intents (
   id         TEXT PRIMARY KEY,
   order_id   TEXT NOT NULL,
@@ -404,7 +430,6 @@ CREATE TABLE IF NOT EXISTS checkout_intents (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_refresh_hash ON refresh_tokens(token_hash);
 
 CREATE TABLE IF NOT EXISTS ai_providers (
   id            TEXT PRIMARY KEY,
