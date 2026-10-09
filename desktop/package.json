@@ -43,7 +43,15 @@
         "filter": [
           "**/*",
           "!data/*.db*",
-          "!**/node_modules/.cache/**"
+          "!**/node_modules/**"
+        ]
+      },
+      {
+        "from": "runtime/server/node_modules",
+        "to": "server/node_modules",
+        "filter": [
+          "**/*",
+          "!**/.cache/**"
         ]
       },
       {

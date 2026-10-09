@@ -29,13 +29,13 @@ jobs:
           npm test > "$RUNNER_TEMP/npm-test.log" 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            grep -E '^not ok |^  error:|^  code:' "$RUNNER_TEMP/npm-test.log" | while IFS= read -r line; do
+            grep -E '^[[:space:]]*not ok [0-9]+ - ' "$RUNNER_TEMP/npm-test.log" | tail -n 20 | while IFS= read -r line; do
               line=${line//'%'/'%25'}
               line=${line//$'\r'/'%0D'}
               line=${line//$'\n'/'%0A'}
               printf '::error title=Server test failure::%s\n' "$line"
             done
-            if ! grep -q '^not ok ' "$RUNNER_TEMP/npm-test.log"; then
+            if ! grep -Eq '^[[:space:]]*not ok [0-9]+ - ' "$RUNNER_TEMP/npm-test.log"; then
               printf '::error title=Server test command failed::npm test exited with status %s; see step log for details\n' "$status"
             fi
           fi
