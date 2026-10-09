@@ -52,6 +52,7 @@ test('readiness preflight fails closed and states that it makes no external requ
   assert.equal(report.checks.recovery_and_canary.argo_analysis_template_present, true);
   assert.equal(report.checks.recovery_and_canary.production_oci_image_definition_present, true);
   assert.equal(report.checks.recovery_and_canary.production_oci_build_pipeline_present, true);
+  assert.equal(report.checks.recovery_and_canary.production_oci_ci_nonpublishing_build_configured, true);
   assert.equal(report.checks.recovery_and_canary.production_oci_base_digest_confirmed, false);
   assert.equal(report.checks.recovery_and_canary.production_oci_digest_confirmed, false);
   assert.equal(report.checks.recovery_and_canary.production_oci_signature_verified, false);

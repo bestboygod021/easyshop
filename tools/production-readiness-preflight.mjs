@@ -335,9 +335,15 @@ function inspectRecoveryAndCanary(root, env) {
   const nginxControllerConfirmed = env.NGINX_INGRESS_CONFIRMED === '1';
   const prometheusConfirmed = env.PROMETHEUS_ROLLOUT_ANALYSIS_CONFIRMED === '1';
   const imageDefinitionPresent = hasFile(root, 'Dockerfile');
+  let ciWorkflowSource = '';
+  try { ciWorkflowSource = fs.readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8'); } catch { /* report below */ }
+  const ciNonPublishingImageBuildConfigured = /container-image-build:/.test(ciWorkflowSource)
+    && /docker\/build-push-action@v6/.test(ciWorkflowSource)
+    && /push:\s*false/.test(ciWorkflowSource);
   const imageBuildPipelinePresent = imageDefinitionPresent
     && hasFile(root, '.dockerignore')
-    && hasFile(root, '.github/workflows/container-image.yml');
+    && hasFile(root, '.github/workflows/container-image.yml')
+    && ciNonPublishingImageBuildConfigured;
   const baseImageDigestConfirmed = /^node:22\.[0-9]+\.[0-9]+-bookworm-slim@sha256:[a-f0-9]{64}$/.test(
     String(env.PRODUCTION_NODE_BASE_IMAGE || ''),
   );
@@ -381,6 +387,7 @@ function inspectRecoveryAndCanary(root, env) {
     prometheus_rollout_analysis_confirmed: prometheusConfirmed,
     production_oci_image_definition_present: imageDefinitionPresent,
     production_oci_build_pipeline_present: imageBuildPipelinePresent,
+    production_oci_ci_nonpublishing_build_configured: ciNonPublishingImageBuildConfigured,
     production_oci_base_digest_confirmed: baseImageDigestConfirmed,
     production_oci_digest_confirmed: imageDigestConfirmed,
     production_oci_signature_verified: imageSignatureVerified,

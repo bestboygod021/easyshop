@@ -44,6 +44,36 @@ jobs:
       - run: npm run build
       - run: npm audit --audit-level=high
 
+  container-image-build:
+    name: Build OCI image without publishing
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/arena/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the production Dockerfile (no registry push)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          build-args: |
+            NODE_BASE_IMAGE=${{ vars.NODE_BASE_IMAGE || 'node:22.22.3-bookworm-slim' }}
+          push: false
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Report local build digest
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          echo "OCI container build succeeded without publishing." >> "$GITHUB_STEP_SUMMARY"
+          echo "Candidate digest: \`${IMAGE_DIGEST:-not-reported}\`" >> "$GITHUB_STEP_SUMMARY"
+
   postgres-integration:
     name: PostgreSQL snapshot import, transaction, and backfill integration
     runs-on: ubuntu-24.04

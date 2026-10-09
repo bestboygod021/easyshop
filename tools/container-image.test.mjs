@@ -27,6 +27,16 @@ describe('production OCI image contract', () => {
     assert.match(dockerignore, /!\*\*\/\.env\.example/);
   });
 
+  it('builds the Dockerfile on CI branches without publishing or requiring registry credentials', () => {
+    const workflow = read('.github/workflows/ci.yml');
+    const imageBuildJob = workflow.match(/(?:^|\n)[ ]{2}container-image-build:\n([\s\S]*?)(?=\n[ ]{2}[a-z][a-z0-9-]*:\n|$)/)?.[1] || '';
+    assert.ok(imageBuildJob, 'missing non-publishing OCI build job in required CI');
+    assert.match(imageBuildJob, /docker\/build-push-action@v6/);
+    assert.match(imageBuildJob, /push:\s*false/);
+    assert.match(imageBuildJob, /startsWith\(github\.ref, 'refs\/heads\/arena\/'\)/);
+    assert.doesNotMatch(imageBuildJob, /docker\/login-action|packages:\s*write|kubectl|argo\\s+rollouts\\s+promote/i);
+  });
+
   it('only publishes tagged images, requires a digest-pinned base, and signs the image digest', () => {
     const workflow = read('.github/workflows/container-image.yml');
     assert.match(workflow, /pull_request:/);

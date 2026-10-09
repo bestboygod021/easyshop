@@ -163,7 +163,7 @@ Root `Dockerfile` و `.dockerignore` اکنون build چندمرحله‌ای و
 docker build -t easyshop-api:local .
 ```
 
-Tag محلی به‌معنی image تأییدشده نیست. GitHub workflow روی pull request فقط build می‌کند؛ فقط tag نسخه‌ای `v*` می‌تواند به GHCR publish کند، آن هم اگر repository variable `NODE_BASE_IMAGE` به image Node 22 Bookworm بازبینی‌شده و digest-pinned اشاره کند. Workflow SBOM/provenance می‌سازد و digest را امضا می‌کند؛ هنوز در GitHub اجرا نشده و staging deployment تعریف/تأیید نشده است. هیچ secretی را به build context، Dockerfile، history یا command line اضافه نکنید.
+Tag محلی به‌معنی image تأییدشده نیست. CI برای pull request و pushهای شاخه‌های `arena/*` Dockerfile را با `push: false` واقعاً build می‌کند؛ این فقط validation است و به registry credential نیاز ندارد. فقط tag نسخه‌ای `v*` در workflow انتشار می‌تواند به GHCR publish کند، آن هم اگر repository variable `NODE_BASE_IMAGE` به image Node 22 Bookworm بازبینی‌شده و digest-pinned اشاره کند. مسیر انتشار SBOM/provenance می‌سازد و digest را امضا می‌کند؛ OCI publish، امضای release و staging deployment هنوز اجرا/تأیید نشده‌اند. هیچ secretی را به build context، Dockerfile، history یا command line اضافه نکنید.
 
 این image همچنان API محلی SQLite را اجرا می‌کند؛ volume یا چند replica مشکل تقسیم وضعیت SQLite را حل نمی‌کند. برای Kubernetes rollout تا پایان PostgreSQL data import/cutover، استفاده از digest امضاشده و رفع blockerهای platform صبر کنید. جزئیات: [`SUPPLY_CHAIN.md`](./SUPPLY_CHAIN.md) و [`ops/kubernetes/README.md`](../ops/kubernetes/README.md).
 
