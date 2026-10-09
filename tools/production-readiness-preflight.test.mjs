@@ -44,6 +44,11 @@ test('readiness preflight fails closed and states that it makes no external requ
   assert.equal(report.checks.postgresql_rehearsal.sqlite_snapshot_import_test_present, true);
   assert.equal(report.checks.postgresql_rehearsal.sqlite_snapshot_import_ci_configured, true);
   assert.equal(report.checks.postgresql_rehearsal.application_database_url_support, true);
+  assert.equal(report.checks.postgresql_rehearsal.shadow_read_harness_present, true);
+  assert.equal(report.checks.postgresql_rehearsal.shadow_read_contract_test_present, true);
+  assert.equal(report.checks.postgresql_rehearsal.shadow_read_enabled, false);
+  assert.equal(report.checks.postgresql_rehearsal.shadow_read_domain_wired, false);
+  assert.equal(report.checks.postgresql_rehearsal.shadow_read_execution_verified, false);
   assert.equal(report.checks.postgresql_rehearsal.sqlite_database_sync_still_active, true);
   assert.equal(report.checks.payment_sandbox.sandbox_transaction_performed, false);
   assert.equal(report.checks.recovery_and_canary.selected_orchestrator, 'kubernetes');
@@ -58,6 +63,16 @@ test('readiness preflight fails closed and states that it makes no external requ
   assert.equal(report.checks.recovery_and_canary.production_oci_signature_verified, false);
   assert.equal(report.checks.recovery_and_canary.traffic_shift_or_rollback_performed, false);
   assert.equal(report.checks.recovery_and_canary.object_lock_policy_independently_verified, false);
+});
+
+test('shadow-read opt-in cannot imply parity until a domain is explicitly wired and observed', () => {
+  const report = buildProductionReadinessReport({ root: ROOT, env: { PG_SHADOW_READ_ENABLED: '1' } });
+  const check = report.checks.postgresql_rehearsal;
+  assert.equal(check.shadow_read_enabled, true);
+  assert.equal(check.shadow_read_domain_wired, false);
+  assert.equal(check.shadow_read_execution_verified, false);
+  assert.ok(check.blockers.some((blocker) => blocker.includes('no application domain is wired')));
+  assert.equal(report.no_external_requests_made, true);
 });
 
 test('canary operator flags stay unverified and never claim a traffic shift or rollback', () => {

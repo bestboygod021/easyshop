@@ -19,6 +19,12 @@ Workflow اصلی در `.github/workflows/ci.yml` اکنون ESLint، preflight 
 ```bash
 npm run lint
 npm run test:ops-preflight
+npm run test:container-image
+npm run test:release-evidence
+npm run test:db-isolation
+npm run test:vault-contract
+npm run test:shadow-read
+npm run test:postgres-staging
 npm run test:postgres-import
 npm test
 npm run build
@@ -28,7 +34,7 @@ npm run build
 
 ## ۲) PostgreSQL
 
-در این مرحله driver `pg`، repository ناهمگام اختیاری، facade سازگاری SQLite، runner نسخه‌دار/checksumدار و bootstrap DDL کامل ۹۵ جدول وجود دارند. ابزار snapshot importer نیز plan آفلاین، batch/resume، redaction credentialها، payment backfill، digest ردیفی و reconciliation جمع مالی را پیاده می‌کند. تست‌های fixture مصنوعی با PGlite محلی و CI run [37970262910](https://github.com/bestboygod021/easyshop/actions/runs/37970262910) روی PostgreSQL 16 موقت سبز شده‌اند؛ fixture/CI staging واقعی نیستند. API همچنان helperهای sync و `DatabaseSync` دارد و هیچ domain به repository PostgreSQL وصل نشده، پس gate **مسدود** می‌ماند. مقصد staging را فقط پس از تأیید mapping، snapshot پاک‌سازی‌شده و مسیر بازگشت آماده کنید:
+در این مرحله driver `pg`، repository ناهمگام اختیاری، facade سازگاری SQLite، runner نسخه‌دار/checksumدار و bootstrap DDL کامل ۹۵ جدول وجود دارند. ابزار snapshot importer نیز plan آفلاین، batch/resume، redaction credentialها، payment backfill، digest ردیفی و reconciliation جمع مالی را پیاده می‌کند. تست‌های fixture مصنوعی با PGlite محلی و CI run [37970262910](https://github.com/bestboygod021/easyshop/actions/runs/37970262910) روی PostgreSQL 16 موقت سبز شده‌اند؛ fixture/CI staging واقعی نیستند. API همچنان helperهای sync و `DatabaseSync` دارد و هیچ domain به repository PostgreSQL وصل نشده، پس gate **مسدود** می‌ماند. `ShadowReadHarness` یک قرارداد مقایسهٔ اختیاری/پس‌زمینه‌ای است که به domain وصل نشده و خاموش می‌ماند؛ تستش فقط fake repository را می‌آزماید و preflight اجرای parity را تأیید نمی‌کند. مقصد staging را فقط پس از تأیید mapping، snapshot پاک‌سازی‌شده و مسیر بازگشت آماده کنید:
 
 ```dotenv
 PG_REHEARSAL_DATABASE_URL=postgresql://<role>:<secret>@<staging-host>/<db>?sslmode=verify-full
@@ -44,7 +50,7 @@ URL را فقط از secret store در محیط runner تزریق کنید؛ د�
 
 الگوی provider انتخاب‌شده **Vault KV v2 + Vault Agent sidecar** با Kubernetes service-account workload identity است؛ projected JWT فقط در sidecar mount می‌شود، Agent فایل‌ها را در volume حافظه‌ای می‌نویسد و اپلیکیشن فقط `SECRETS_DIR` را read-only می‌بیند. policy، Agent config و templateها در `ops/vault/` هستند، اما Vault endpoint/CA، Kubernetes auth role، namespace/service account، Agent image و secret mount واقعی هنوز provision یا وصل نشده‌اند. `SECRET_STORE_PROVIDER=vault-agent` صرفاً برچسب preflight است. فایل‌ها باید readable برای process، خارج از repo، غیرقابل‌نوشتن برای group/world و غیرقابل‌خواندن برای world باشند؛ mode پیشنهادی `0400` یا `0440` با group محدود است.
 
-Preflight فایل‌های versioned زیر را بررسی می‌کند، اما اتصال upstream را تأیید نمی‌کند:
+`npm run test:vault-contract` در CI فقط policy، templateها و مرزبندی mountها را به‌صورت ایستا بررسی می‌کند؛ هیچ Vault واقعی را فراخوانی نمی‌کند. Preflight فایل‌های versioned زیر را بررسی می‌کند، اما اتصال upstream را تأیید نمی‌کند:
 
 - `JWT_SECRET`
 - `AUDIT_LOG_HMAC_KEY_<VERSION>`
@@ -89,6 +95,8 @@ DEPLOYMENT_TRAFFIC_ROUTER=<selected-router>
 
 تصمیم این repository **Kubernetes + Argo Rollouts + ingress-nginx** است؛ AnalysisTemplate برای حداقل حجم canary، 5xx <1% و p95 <750ms دارد. فایل‌های `ops/kubernetes/` و `ops/argo-rollouts/` فقط template هستند و `DO NOT APPLY` دارند. CI Dockerfile را در job جداگانه با `push: false` می‌سازد؛ job در run [37973825978](https://github.com/bestboygod021/easyshop/actions/runs/37973825978) موفق شد، اما image را منتشر نکرد. فایل workflow انتشار فقط در branch حاضر است و GitHub آن را در فهرست workflowهای فعال نشان نمی‌دهد. انتشار digest-pinned و امضاشده، PostgreSQL cutover، کنترلرهای cluster، ServiceMonitor/Prometheus، NGINX plugin و staging واقعی هنوز فراهم/تأیید نشده‌اند. SQLite فایل‌محلی فعلی با چند pod امن نیست.
 
+OCI workflow این branch، stable tag و ancestry را در job بدون publish بررسی می‌کند؛ publish جداگانه فقط با `OCI_RELEASE_ENABLED=1`، base image با digest، و environment `oci-release` دارای reviewer مستقل/self-review prevention و policy صریح `v*` قابل اجراست. environment و repository tag ruleset هنوز ساخته نشده‌اند؛ درخواست‌های تنظیم GitHub با HTTP 403 رد شدند. manifest release فقط image/source/build-input digestها را متصل می‌کند و پنج مدرک staging/Vault/payment/recovery/canary را `not_verified` علامت می‌زند؛ این artifact rehearsal واقعی نیست.
+
 اگر بعداً staging آماده شد، با تأیید مالک platform مقادیر زیر را از deployment secret/config store تنظیم کنید؛ این flagها فقط self-attestation هستند و probe یا rollout اجرا نمی‌کنند:
 
 ```dotenv
@@ -114,7 +122,8 @@ Preflight وجود فایل‌ها/مقادیر را می‌سنجد اما buck
 
 ## وضعیت فعلی این workspace
 
-- ESLint و CI gate: پیاده، محلی و remote موفق؛ run [37973825978](https://github.com/bestboygod021/easyshop/actions/runs/37973825978) روی commit `e7c9eab` سبز است و Dockerfile را نیز بدون publish build کرده؛ release یا deployment production انجام نشده. اجرای پیشین [37973308936](https://github.com/bestboygod021/easyshop/actions/runs/37973308936) دو آزمون پایگاه‌دادهٔ round-8 را ناموفق نشان داد؛ آن فایل اکنون fixture دیتابیس موقت جداگانه دارد.
+- ESLint و CI gate: run پیشین [37973825978](https://github.com/bestboygod021/easyshop/actions/runs/37973825978) روی commit `e7c9eab` سبز است و Dockerfile را بدون publish build کرده؛ در این branch نیز lint محلی و `npm test` با 341/341 آزمون موفق شده‌اند. اجرای remote همین branch هنوز پس از push لازم است؛ release یا deployment production انجام نشده. اجرای پیشین [37973308936](https://github.com/bestboygod021/easyshop/actions/runs/37973308936) دو آزمون پایگاه‌دادهٔ round-8 را ناموفق نشان داد؛ این تغییرها fixture مستقل و audit ایزوله‌سازی افزوده‌اند.
+- قراردادهای ارتقای جدید: تست‌های محلی OCI، release evidence، DB isolation، Vault و shadow-read سبز شده‌اند؛ YAML workflowها parse شده و frontend build/npm audit هم موفق‌اند. این‌ها کد و CI guardrail هستند، نه تست GitHub setting زنده یا سامانهٔ external.
 - PostgreSQL: **blocked**؛ driver، async pilot، schema 95-table، importer/resume، fixture مصنوعی و reconciliation در PostgreSQL 16 موقت CI run [37973825978](https://github.com/bestboygod021/easyshop/actions/runs/37973825978) موفق‌اند؛ staging endpoint/TLS، sanitized production snapshot، domain wiring/cutover و restore evidence فراهم نیستند.
 - Vault: provider/pattern، policy read-only، Kubernetes workload-identity/Agent templates و file-rotation tests آماده‌اند؛ endpoint، auth role، cluster و live mount متصل نشده‌اند.
 - Payment: local mocked callback tests و evidence template موجودند؛ sandbox E2E، callback reachability، statement و independent review انجام نشده‌اند.

@@ -1,3 +1,4 @@
+import './isolated-seed.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { stolenCardBlacklistProber } from '../src/services/stolen-card-blacklist.js';

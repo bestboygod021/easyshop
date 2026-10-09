@@ -21,6 +21,9 @@ jobs:
       - run: npm run lint
       - run: npm run test:ops-preflight
       - run: npm run test:container-image
+      - run: npm run test:release-evidence
+      - run: npm run test:db-isolation
+      - run: npm run test:vault-contract
       - run: npm run test:postgres-staging
       - run: npm run test:postgres-import
       - name: Run server tests with safe failure annotations

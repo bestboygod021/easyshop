@@ -23,6 +23,20 @@ function hasFile(root, relativePath) {
   try { return fs.statSync(path.join(root, relativePath)).isFile(); } catch { return false; }
 }
 
+function containsSource(root, relativePath, pattern) {
+  const absolutePath = path.join(root, relativePath);
+  let entries;
+  try { entries = fs.readdirSync(absolutePath, { withFileTypes: true }); } catch { return false; }
+  for (const entry of entries) {
+    const candidate = path.join(absolutePath, entry.name);
+    if (entry.isDirectory() && containsSource(root, path.relative(root, candidate), pattern)) return true;
+    if (entry.isFile() && /\.m?js$/.test(entry.name)) {
+      try { if (pattern.test(fs.readFileSync(candidate, 'utf8'))) return true; } catch { /* continue */ }
+    }
+  }
+  return false;
+}
+
 function inspectMountedSecret(directory, key, minimumBytes = 1) {
   if (!directory || !path.isAbsolute(directory)) return { ok: false, reason: 'mount_missing_or_not_absolute' };
   try {
@@ -108,6 +122,11 @@ function inspectPostgres(root, env) {
     && /reconciliation/.test(postgresImportIntegrationSource);
   const sqliteSyncStillActive = /DatabaseSync/.test(dbSource);
   const databaseUrlSupported = /DATABASE_URL/.test(configSource) || /DATABASE_URL/.test(repositorySource);
+  const shadowReadHarnessPresent = hasFile(root, 'server/src/db/shadow-read.js');
+  const shadowReadContractTestPresent = hasFile(root, 'server/test/shadow-read.test.js');
+  const shadowReadEnabled = env.PG_SHADOW_READ_ENABLED === '1';
+  const shadowReadDomainWired = containsSource(root, 'server/src/routes', /\bShadowReadHarness\b/)
+    || containsSource(root, 'server/src/services', /\bShadowReadHarness\b/);
 
   let target = { configured: false, tlsConfigured: false, stagingConfirmed: false };
   const rawTarget = String(env.PG_REHEARSAL_DATABASE_URL || '').trim();
@@ -136,6 +155,7 @@ function inspectPostgres(root, env) {
   if (!postgresRealServerImportTestPresent) blockers.push('The SQLite snapshot import has not been tested against the isolated real PostgreSQL CI service.');
   if (sqliteSyncStillActive) blockers.push('The active DB layer still uses synchronous SQLite DatabaseSync helpers.');
   if (!databaseUrlSupported) blockers.push('The staged repository factory does not support a PostgreSQL DATABASE_URL.');
+  if (shadowReadEnabled && !shadowReadDomainWired) blockers.push('PG_SHADOW_READ_ENABLED is set, but no application domain is wired to the shadow-read harness.');
   if (!target.configured) blockers.push('PG_REHEARSAL_DATABASE_URL is missing or is not a PostgreSQL URL.');
   if (!target.tlsConfigured) blockers.push('The rehearsal target URL must explicitly require TLS with sslmode=require, verify-ca, or verify-full.');
   if (!target.stagingConfirmed) blockers.push('Set PG_REHEARSAL_CONFIRM_STAGING=1 only for an isolated, non-production staging database.');
@@ -157,6 +177,11 @@ function inspectPostgres(root, env) {
     sqlite_snapshot_import_ci_configured: sqliteSnapshotImportCiConfigured,
     sqlite_database_sync_still_active: sqliteSyncStillActive,
     application_database_url_support: databaseUrlSupported,
+    shadow_read_harness_present: shadowReadHarnessPresent,
+    shadow_read_contract_test_present: shadowReadContractTestPresent,
+    shadow_read_enabled: shadowReadEnabled,
+    shadow_read_domain_wired: shadowReadDomainWired,
+    shadow_read_execution_verified: false,
     target_url_configured: target.configured,
     target_tls_configured: target.tlsConfigured,
     staging_confirmation_present: target.stagingConfirmed,
