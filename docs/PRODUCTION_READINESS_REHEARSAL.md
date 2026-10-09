@@ -87,7 +87,7 @@ DEPLOYMENT_ORCHESTRATOR=<selected-platform>
 DEPLOYMENT_TRAFFIC_ROUTER=<selected-router>
 ```
 
-تصمیم این repository **Kubernetes + Argo Rollouts + ingress-nginx** است؛ AnalysisTemplate برای حداقل حجم canary، 5xx <1% و p95 <750ms دارد. فایل‌های `ops/kubernetes/` و `ops/argo-rollouts/` فقط template هستند و `DO NOT APPLY` دارند. CI Dockerfile را در job جداگانه با `push: false` می‌سازد؛ job در run [37972968622](https://github.com/bestboygod021/easyshop/actions/runs/37972968622) موفق شد، اما image را منتشر نکرد. فایل workflow انتشار فقط در branch حاضر است و GitHub آن را در فهرست workflowهای فعال نشان نمی‌دهد. انتشار digest-pinned و امضاشده، PostgreSQL cutover، کنترلرهای cluster، ServiceMonitor/Prometheus، NGINX plugin و staging واقعی هنوز فراهم/تأیید نشده‌اند. SQLite فایل‌محلی فعلی با چند pod امن نیست.
+تصمیم این repository **Kubernetes + Argo Rollouts + ingress-nginx** است؛ AnalysisTemplate برای حداقل حجم canary، 5xx <1% و p95 <750ms دارد. فایل‌های `ops/kubernetes/` و `ops/argo-rollouts/` فقط template هستند و `DO NOT APPLY` دارند. CI Dockerfile را در job جداگانه با `push: false` می‌سازد؛ job در run [37973825978](https://github.com/bestboygod021/easyshop/actions/runs/37973825978) موفق شد، اما image را منتشر نکرد. فایل workflow انتشار فقط در branch حاضر است و GitHub آن را در فهرست workflowهای فعال نشان نمی‌دهد. انتشار digest-pinned و امضاشده، PostgreSQL cutover، کنترلرهای cluster، ServiceMonitor/Prometheus، NGINX plugin و staging واقعی هنوز فراهم/تأیید نشده‌اند. SQLite فایل‌محلی فعلی با چند pod امن نیست.
 
 اگر بعداً staging آماده شد، با تأیید مالک platform مقادیر زیر را از deployment secret/config store تنظیم کنید؛ این flagها فقط self-attestation هستند و probe یا rollout اجرا نمی‌کنند:
 
@@ -114,8 +114,8 @@ Preflight وجود فایل‌ها/مقادیر را می‌سنجد اما buck
 
 ## وضعیت فعلی این workspace
 
-- ESLint و CI gate: پیاده، محلی و remote موفق؛ run [37972968622](https://github.com/bestboygod021/easyshop/actions/runs/37972968622) روی commit `2284a01` سبز است و Dockerfile را نیز بدون publish build کرده؛ release یا deployment production انجام نشده.
-- PostgreSQL: **blocked**؛ driver، async pilot، schema 95-table، importer/resume، fixture مصنوعی و reconciliation در PostgreSQL 16 موقت CI موفق‌اند؛ staging endpoint/TLS، sanitized production snapshot، domain wiring/cutover و restore evidence فراهم نیستند.
+- ESLint و CI gate: پیاده، محلی و remote موفق؛ run [37973825978](https://github.com/bestboygod021/easyshop/actions/runs/37973825978) روی commit `e7c9eab` سبز است و Dockerfile را نیز بدون publish build کرده؛ release یا deployment production انجام نشده. اجرای پیشین [37973308936](https://github.com/bestboygod021/easyshop/actions/runs/37973308936) دو آزمون پایگاه‌دادهٔ round-8 را ناموفق نشان داد؛ آن فایل اکنون fixture دیتابیس موقت جداگانه دارد.
+- PostgreSQL: **blocked**؛ driver، async pilot، schema 95-table، importer/resume، fixture مصنوعی و reconciliation در PostgreSQL 16 موقت CI run [37973825978](https://github.com/bestboygod021/easyshop/actions/runs/37973825978) موفق‌اند؛ staging endpoint/TLS، sanitized production snapshot، domain wiring/cutover و restore evidence فراهم نیستند.
 - Vault: provider/pattern، policy read-only، Kubernetes workload-identity/Agent templates و file-rotation tests آماده‌اند؛ endpoint، auth role، cluster و live mount متصل نشده‌اند.
 - Payment: local mocked callback tests و evidence template موجودند؛ sandbox E2E، callback reachability، statement و independent review انجام نشده‌اند.
 - Recovery/canary: Kubernetes + Argo Rollouts + ingress-nginx انتخاب و templates/proposed SLO thresholds آماده‌اند؛ CI image build بدون publish تعریف شده، اما OCI digest/signature release، PostgreSQL cutover، cluster/router/Prometheus، off-site Object Lock، staging restore و measured RTO/RPO نداریم.
