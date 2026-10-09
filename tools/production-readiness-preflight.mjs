@@ -139,7 +139,7 @@ function inspectPostgres(root, env) {
     postgres_schema_table_count: POSTGRES_SCHEMA_TABLE_NAMES.length,
     postgres_schema_ddl_smoke_test_present: postgresSchemaSmokeTestPresent,
     postgres_real_server_ci_integration_defined: postgresLiveIntegrationCiConfigured,
-    postgres_real_server_integration_executed: false,
+    postgres_staging_integration_executed: false,
     sqlite_snapshot_import_tool_present: sqliteSnapshotImportToolPresent,
     sqlite_database_sync_still_active: sqliteSyncStillActive,
     application_database_url_support: databaseUrlSupported,

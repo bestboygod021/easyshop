@@ -113,7 +113,7 @@ Preflight وجود فایل‌ها/مقادیر را می‌سنجد اما buck
 ## وضعیت فعلی این workspace
 
 - ESLint و CI gate: پیاده و محلی قابل‌اجرا؛ اجرای remote GitHub Actions/release واقعی در این تغییر انجام نشده است.
-- PostgreSQL: **blocked**؛ driver، async pilot، bootstrap schema 95-table و PGlite DDL test موجودند؛ data importer/reconciliation/domain cutover، PostgreSQL endpoint، CI staging run و restore evidence موجود نیست.
+- PostgreSQL: **blocked**؛ driver، async pilot، bootstrap schema 95-table، PGlite DDL test و CI integration سبز روی PostgreSQL 16 موقت موجودند؛ data importer/reconciliation/domain cutover، PostgreSQL staging endpoint/TLS و restore evidence موجود نیست.
 - Vault: provider/pattern، policy read-only، Kubernetes workload-identity/Agent templates و file-rotation tests آماده‌اند؛ endpoint، auth role، cluster و live mount متصل نشده‌اند.
 - Payment: local mocked callback tests و evidence template موجودند؛ sandbox E2E، callback reachability، statement و independent review انجام نشده‌اند.
 - Recovery/canary: Kubernetes + Argo Rollouts + ingress-nginx انتخاب و templates/proposed SLO thresholds آماده‌اند؛ image pipeline، PostgreSQL، cluster/router/Prometheus، off-site Object Lock، staging restore و measured RTO/RPO نداریم.
