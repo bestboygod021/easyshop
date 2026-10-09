@@ -112,6 +112,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_SUMMARY: true
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          BASE_REF: 1d049a95ba5c3549eed366b35db0c357b1abfeba
       - name: Emit redacted Gitleaks locations for triage
         if: always()
         shell: bash
