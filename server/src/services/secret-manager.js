@@ -1,0 +1,96 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+const REDACTED_MARKER = '[PROTECTED_SECRET]';
+
+function sanitizeSecretValue(val) {
+  if (typeof val !== 'string') return '';
+  return val.trim();
+}
+
+/**
+ * مدیریت یکپارچه و امن پیکربندی و secretهای محیط staging و production.
+ * - خواندن از متغیرهای محیطی یا پرونده‌های محرمانه‌ی سیستمی (مانند Docker/K8s secrets)
+ * - حافظه موقت (In-Memory Cache) با TTL جهت کاهش دسترسی به فایل‌سیستم در بارهای بالا
+ * - عدم ثبت مقادیر محرمانه در لاگ‌ها، گزارش‌ها یا پیام‌های خطا
+ * - جلوگیری از افشای توکن‌ها، رمزها و کلیدهای درگاه
+ */
+export class SecretManager {
+  constructor(options = {}) {
+    this.env = options.env || process.env;
+    this.secretsDir = options.secretsDir || this.env.SECRETS_DIR || null;
+    this.cacheTtlMs = Number.isSafeInteger(options.cacheTtlMs) ? options.cacheTtlMs : 30_000;
+    this._cache = new Map();
+  }
+
+  clearCache() {
+    this._cache.clear();
+  }
+
+  getSecret(key, defaultValue = '') {
+    if (!key || typeof key !== 'string' || !/^[A-Z][A-Z0-9_]{0,127}$/.test(key)) return defaultValue;
+
+    const now = Date.now();
+    const cached = this._cache.get(key);
+    if (cached && now < cached.expiresAt) {
+      return cached.val;
+    }
+
+    // ۱. اولویت با فایل محرمانه‌ی mount شده (برای نمونه Vault Agent/CSI)
+    if (this.secretsDir && path.isAbsolute(this.secretsDir)) {
+      try {
+        const realDirectory = fs.realpathSync(this.secretsDir);
+        const filePath = path.join(realDirectory, key);
+        const realFilePath = fs.realpathSync(filePath);
+        const relativePath = path.relative(realDirectory, realFilePath);
+        if (!relativePath.startsWith('..') && !path.isAbsolute(relativePath) && fs.statSync(realFilePath).isFile()) {
+          const content = fs.readFileSync(realFilePath, 'utf8');
+          const trimmed = sanitizeSecretValue(content);
+          if (trimmed) {
+            this._cache.set(key, { val: trimmed, expiresAt: now + this.cacheTtlMs });
+            return trimmed;
+          }
+        }
+      } catch {
+        // نادیده گرفتن خطا جهت جلوگیری از افشای مسیرها در لاگ عمومی
+      }
+    }
+
+    // ۲. خواندن از محیط پردازش
+    const val = this.env[key];
+    if (val !== undefined && val !== null && String(val).trim() !== '') {
+      const sanitized = sanitizeSecretValue(String(val));
+      this._cache.set(key, { val: sanitized, expiresAt: now + this.cacheTtlMs });
+      return sanitized;
+    }
+
+    return defaultValue;
+  }
+
+  requireSecret(key, label) {
+    const value = this.getSecret(key);
+    if (!value) {
+      const display = label || key;
+      throw new Error(`مقدار محرمانه‌ی الزامی پیکربندی نشده است: ${display}`);
+    }
+    return value;
+  }
+
+  /**
+   * خلاصه وضعیت secretها بدون افشای مقدار آنها (فقط نشان‌دهنده ست بودن یا نبودن)
+   */
+  inspectSecretStatus(keys = []) {
+    const result = {};
+    for (const key of keys) {
+      const val = this.getSecret(key);
+      result[key] = {
+        configured: Boolean(val),
+        length: val ? val.length : 0,
+        value: val ? REDACTED_MARKER : null,
+      };
+    }
+    return result;
+  }
+}
+
+export const defaultSecretManager = new SecretManager();

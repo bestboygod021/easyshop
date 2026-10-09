@@ -1,0 +1,3 @@
+{{- with secret "kv/data/easyshop/production/AUDIT_LOG_HMAC_KEY_V1" -}}
+{{ .Data.data.value }}
+{{- end -}}

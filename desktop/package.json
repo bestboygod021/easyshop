@@ -1,0 +1,91 @@
+{
+  "name": "@easyshop/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "نسخه ویندوز (و مک/لینوکس) فروشگاه EasyShop بر پایه Electron",
+  "main": "main.cjs",
+  "author": "EasyShop",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "cross-env EASYSHOP_DEV=1 electron .",
+    "start": "electron .",
+    "dist": "node scripts/prepare-runtime.cjs && electron-builder --win --x64",
+    "dist:all": "node scripts/prepare-runtime.cjs && electron-builder -mwl",
+    "pack": "node scripts/prepare-runtime.cjs && electron-builder --dir && node scripts/verify-package.cjs",
+    "test:runtime": "cross-env ELECTRON_RUN_AS_NODE=1 electron scripts/sqlite-smoke.cjs"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "ir.easyshop.desktop",
+    "productName": "EasyShop",
+    "copyright": "EasyShop © 2026",
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "resources/icon.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "runtime/server",
+        "to": "server",
+        "filter": [
+          "**/*",
+          "!data/*.db*",
+          "!**/node_modules/**"
+        ]
+      },
+      {
+        "from": "runtime/server/node_modules",
+        "to": "server/node_modules",
+        "filter": [
+          "**/*",
+          "!**/.cache/**"
+        ]
+      },
+      {
+        "from": "../web/dist",
+        "to": "web/dist",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "resources/icon.png",
+      "artifactName": "EasyShop-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "EasyShop",
+      "installerLanguages": ["fa_IR", "en_US"],
+      "language": "1065"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "resources/icon.png",
+      "category": "public.app-category.shopping"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "resources/icon.png",
+      "category": "Shopping"
+    }
+  }
+}

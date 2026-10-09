@@ -1,0 +1,230 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Tests, build, and dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:ops-preflight
+      - run: npm run test:container-image
+      - run: npm run test:release-evidence
+      - run: npm run test:db-isolation
+      - run: npm run test:vault-contract
+      - run: npm run test:postgres-staging
+      - run: npm run test:postgres-import
+      - name: Run server tests with safe failure annotations
+        shell: bash
+        run: |
+          set +e
+          npm test > "$RUNNER_TEMP/npm-test.log" 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            grep -E '^[[:space:]]*not ok [0-9]+ - ' "$RUNNER_TEMP/npm-test.log" | tail -n 20 | while IFS= read -r line; do
+              line=${line//'%'/'%25'}
+              line=${line//$'\r'/'%0D'}
+              line=${line//$'\n'/'%0A'}
+              printf '::error title=Server test failure::%s\n' "$line"
+            done
+            if ! grep -Eq '^[[:space:]]*not ok [0-9]+ - ' "$RUNNER_TEMP/npm-test.log"; then
+              printf '::error title=Server test command failed::npm test exited with status %s; see step log for details\n' "$status"
+            fi
+          fi
+          exit "$status"
+      - run: npm run build
+      - run: npm audit --audit-level=high
+
+  container-image-build:
+    name: Build OCI image without publishing
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/arena/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the production Dockerfile (no registry push)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          build-args: |
+            NODE_BASE_IMAGE=${{ vars.NODE_BASE_IMAGE || 'node:22.22.3-bookworm-slim' }}
+          push: false
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Report local build digest
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          echo "OCI container build succeeded without publishing." >> "$GITHUB_STEP_SUMMARY"
+          echo "Candidate digest: \`${IMAGE_DIGEST:-not-reported}\`" >> "$GITHUB_STEP_SUMMARY"
+
+  postgres-integration:
+    name: PostgreSQL snapshot import, transaction, and backfill integration
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: easyshop_ci
+          POSTGRES_USER: easyshop_ci
+          POSTGRES_HOST_AUTH_METHOD: trust # ephemeral CI service only; never reuse for staging/production
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U easyshop_ci -d easyshop_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Run against the isolated PostgreSQL service (not staging/production)
+        env:
+          NODE_ENV: test
+          PG_INTEGRATION_DATABASE_URL: postgresql://easyshop_ci@127.0.0.1:5432/easyshop_ci?sslmode=disable
+        run: node --test server/test/postgres-server-integration.test.js
+
+  e2e:
+    name: Browser end-to-end smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+  supply-chain:
+    name: Secret scan, dependency review, and SBOMs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix desktop
+      - run: npm ci --prefix mobile
+      - run: npm run supplychain:audit
+      - run: npm run test:supply-chain
+      - run: npm run test:mobile-tooling
+      - name: Scan repository history for leaked credentials
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_SUMMARY: true
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          BASE_REF: 1d049a95ba5c3549eed366b35db0c357b1abfeba
+      - name: Emit redacted Gitleaks locations for triage
+        if: always()
+        shell: bash
+        run: |
+          report=''
+          for candidate in "$HOME/results.sarif" "$GITHUB_WORKSPACE/results.sarif"; do
+            if [ -f "$candidate" ]; then report="$candidate"; break; fi
+          done
+          if [ -z "$report" ]; then
+            echo '::notice title=Gitleaks report::SARIF report was not present in HOME or the workspace.'
+            exit 0
+          fi
+          node --input-type=module - "$report" <<'NODE'
+          import fs from 'node:fs';
+          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const findings = report.runs?.flatMap((run) => run.results || []) || [];
+          for (const finding of findings) {
+            const location = finding.locations?.[0]?.physicalLocation;
+            const file = location?.artifactLocation?.uri || 'unknown-file';
+            const line = location?.region?.startLine || 0;
+            const commit = finding.partialFingerprints?.commitSha || 'unknown-commit';
+            const fingerprint = `${commit}:${file}:${finding.ruleId}:${line}`;
+            const safe = `rule=${finding.ruleId}; path=${file}; line=${line}; commit=${commit.slice(0, 12)}; ignore_fingerprint=${fingerprint}`
+              .replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
+            console.log(`::error title=Redacted Gitleaks finding::${safe}`);
+          }
+          if (findings.length === 0) console.log('::notice title=Gitleaks report::No SARIF findings were present.');
+          NODE
+      - run: npm run sbom
+      - run: npm run sbom:desktop
+      - run: npm run sbom:mobile
+      - uses: actions/upload-artifact@v4
+        with:
+          name: easyshop-supply-chain-reports
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 90
+
+  dependency-review:
+    name: Review pull request dependencies
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: always
+
+  desktop:
+    name: Electron runtime and package smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix desktop
+      - run: npm audit --prefix desktop --audit-level=high
+      - run: npm run build
+      - run: npm run desktop:runtime
+      - name: Package desktop runtime with failure diagnostics
+        shell: bash
+        run: |
+          set +e
+          npm --prefix desktop run pack > "$RUNNER_TEMP/desktop-pack.log" 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 20 "$RUNNER_TEMP/desktop-pack.log" | while IFS= read -r line; do
+              line=${line//'%'/'%25'}
+              line=${line//$'\r'/'%0D'}
+              line=${line//$'\n'/'%0A'}
+              printf '::error title=Desktop packaging failure::%s\n' "$line"
+            done
+          fi
+          exit "$status"
