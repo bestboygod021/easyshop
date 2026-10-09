@@ -98,6 +98,14 @@ function inspectPostgres(root, env) {
     && /postgres:16-alpine/.test(ciWorkflowSource)
     && /postgres-server-integration\.test\.js/.test(ciWorkflowSource);
   const sqliteSnapshotImportToolPresent = hasFile(root, 'tools/sqlite-to-postgres-migrate.mjs');
+  const sqliteSnapshotImportTestPresent = hasFile(root, 'tools/sqlite-to-postgres-migrate.test.mjs');
+  const sqliteSnapshotImportCiConfigured = sqliteSnapshotImportTestPresent
+    && /npm run test:postgres-import/.test(ciWorkflowSource);
+  let postgresImportIntegrationSource = '';
+  try { postgresImportIntegrationSource = fs.readFileSync(path.join(root, 'server/test/postgres-server-integration.test.js'), 'utf8'); } catch { /* report below */ }
+  const postgresRealServerImportTestPresent = postgresLiveIntegrationTestPresent
+    && /applySqliteSnapshotImport/.test(postgresImportIntegrationSource)
+    && /reconciliation/.test(postgresImportIntegrationSource);
   const sqliteSyncStillActive = /DatabaseSync/.test(dbSource);
   const databaseUrlSupported = /DATABASE_URL/.test(configSource) || /DATABASE_URL/.test(repositorySource);
 
@@ -122,7 +130,10 @@ function inspectPostgres(root, env) {
   if (!postgresMigrations) blockers.push('The versioned PostgreSQL migration runner is missing.');
   if (!postgresSchemaImplemented) blockers.push('The shared 95-table PostgreSQL schema bootstrap or its embedded PostgreSQL DDL test is missing.');
   if (!postgresLiveIntegrationCiConfigured) blockers.push('A real PostgreSQL service-backed CI integration test is missing.');
-  if (!sqliteSnapshotImportToolPresent) blockers.push('A verified SQLite snapshot import and source/target reconciliation runner is missing.');
+  if (!sqliteSnapshotImportToolPresent || !sqliteSnapshotImportTestPresent || !sqliteSnapshotImportCiConfigured) {
+    blockers.push('A tested, CI-required SQLite snapshot import and source/target reconciliation runner is missing.');
+  }
+  if (!postgresRealServerImportTestPresent) blockers.push('The SQLite snapshot import has not been tested against the isolated real PostgreSQL CI service.');
   if (sqliteSyncStillActive) blockers.push('The active DB layer still uses synchronous SQLite DatabaseSync helpers.');
   if (!databaseUrlSupported) blockers.push('The staged repository factory does not support a PostgreSQL DATABASE_URL.');
   if (!target.configured) blockers.push('PG_REHEARSAL_DATABASE_URL is missing or is not a PostgreSQL URL.');
@@ -139,8 +150,11 @@ function inspectPostgres(root, env) {
     postgres_schema_table_count: POSTGRES_SCHEMA_TABLE_NAMES.length,
     postgres_schema_ddl_smoke_test_present: postgresSchemaSmokeTestPresent,
     postgres_real_server_ci_integration_defined: postgresLiveIntegrationCiConfigured,
+    postgres_real_server_snapshot_import_test_present: postgresRealServerImportTestPresent,
     postgres_staging_integration_executed: false,
     sqlite_snapshot_import_tool_present: sqliteSnapshotImportToolPresent,
+    sqlite_snapshot_import_test_present: sqliteSnapshotImportTestPresent,
+    sqlite_snapshot_import_ci_configured: sqliteSnapshotImportCiConfigured,
     sqlite_database_sync_still_active: sqliteSyncStillActive,
     application_database_url_support: databaseUrlSupported,
     target_url_configured: target.configured,

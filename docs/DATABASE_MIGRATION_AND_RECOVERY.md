@@ -14,15 +14,15 @@
 4. **مهاجرت دامنه‌ای:** ابتدا دادهٔ مرجع کم‌ریسک مثل catalog/settings، سپس سبد و حساب؛ آخر از همه موجودی و سفارش/پرداخت. برای هر مرحله backfill قابل resume، dual-read مقایسه‌ای و reconcile شمارش/جمع مالی اجرا شود؛ آدرس کارت/توکن پرداخت وارد backfill نشود.
 5. **Cutover و بازگشت:** پس از دورهٔ shadow-read و تطابق invariants، feature flag هر دامنه را جابه‌جا کنید. نقطهٔ برگشت و حفظ write-order ثبت شود؛ بعد از اولین write فقط در Postgres، بازگشت به SQLite با کپی فایل ساده امن نیست.
 
-**وضعیت مرحله‌ای، بدون ادعای cutover:** وابستگی `pg`، قرارداد ناهمگام `all/get/run/transaction`، facade سازگاری SQLite، migration runner نسخه‌دار و bootstrap کامل ۹۵ جدول PostgreSQL اکنون در repository هستند. آزمون schema از PGlite درون‌فرایندی استفاده می‌کند و adapter transactions همچنان fake-pool tests دارد؛ PostgreSQL server/network، TLS واقعی و rollback واقعی PostgreSQL در این workspace اجرا نشده‌اند. facade SQLite همچنان از `DatabaseSync` استفاده می‌کند و فقط API آن Promise-shaped است؛ queryها هنوز event loop را مسدود می‌کنند. همهٔ عملیات یک connection باید از facade عبور کنند؛ ترکیب آن با helperهای legacy مستقیم امن نیست. هیچ route یا domain از repository جدید استفاده نمی‌کند، importer/resume/reconciliation دادهٔ SQLite پیاده نشده و `DATABASE_DRIVER=postgres` برنامه را سوییچ نمی‌کند.
+**وضعیت مرحله‌ای، بدون ادعای cutover:** وابستگی `pg`، قرارداد ناهمگام `all/get/run/transaction`، facade سازگاری SQLite، migration runner نسخه‌دار و bootstrap کامل ۹۵ جدول PostgreSQL اکنون در repository هستند. ابزار `tools/sqlite-to-postgres-migrate.mjs` نیز plan آفلاین، import دسته‌ای قابل resume، حذف credentialها/داده‌های کوتاه‌عمر، backfill settlement marker، digest تطبیقی هر جدول و reconciliation جمع مالی order/payment دارد. تست‌های مصنوعی PGlite شامل توقف/ادامه، redaction و FK خودارجاعی‌اند؛ CI نیز برای اجرای importer روی PostgreSQL 16 موقت تنظیم شده است، اما نتیجهٔ آن تا پایان workflow همین تغییر عملیاتی محسوب نمی‌شود. این‌ها staging/TLS واقعی یا import snapshot production را اثبات نمی‌کنند. facade SQLite همچنان از `DatabaseSync` استفاده می‌کند و فقط API آن Promise-shaped است؛ queryها هنوز event loop را مسدود می‌کنند. همهٔ عملیات یک connection باید از facade عبور کنند؛ ترکیب آن با helperهای legacy مستقیم امن نیست. هیچ route یا domain از repository جدید استفاده نمی‌کند و `DATABASE_DRIVER=postgres` برنامه را سوییچ نمی‌کند.
 
-**پیش‌نیاز مرحلهٔ staging:** PostgreSQL قابل‌دسترسی از staging/CI، role محدود به database/schema آزمایشی و TLS اجباری، URL فقط در secret store (نه Git/chat)، snapshot قابل‌بازیابی SQLite و تأیید جداگانهٔ non-production بودن مقصد. CI run [37964328774](https://github.com/bestboygod021/easyshop/actions/runs/37964328774) روی PostgreSQL 16 موقت با موفقیت گذشت؛ محیط فعلی همچنان `psql`/`initdb`/`pg_ctl`، Docker و endpoint/credential staging ندارد. پس migration زنده، upgrade از snapshot، reconciliation، cutover یا restore واقعی staging تأیید نشده. پیش از production لازم است importer امن، dual-read/reconciliation و دو recovery drill متوالی روی محیط ایزوله سبز شوند.
+**پیش‌نیاز مرحلهٔ staging:** PostgreSQL ایزوله با role محدود و TLS با اعتبارسنجی CA/نام میزبان، URL فقط در secret store (نه Git/chat)، snapshot مستقل و consistency-checked که مالک داده آن را پیشاپیش برای staging پاک‌سازی/ناشناس‌سازی کرده باشد، و تأیید جداگانهٔ non-production بودن مقصد. importer محتویات متن آزاد را خودکار anonymize نمی‌کند؛ پرچم sanitization صرفاً تأیید operator است. CI قبلی [37964587376](https://github.com/bestboygod021/easyshop/actions/runs/37964587376) روی PostgreSQL 16 موقت موفق بود؛ آن commit پیش از افزودن importer بود. در این workspace endpoint/credential staging، Docker و سرویس PostgreSQL محلی فراهم نیست. بنابراین import واقعی snapshot، reconciliation staging، cutover و restore واقعی staging هنوز تأیید نشده‌اند. پیش از production همچنان dual-read/reconciliation دامنه‌ای و دو recovery drill متوالی روی محیط ایزوله لازم‌اند.
 
 ### Gate تمرین PostgreSQL در staging
 
 `npm run --silent ops:preflight` یک گزارش محلیِ بدون اتصال شبکه می‌سازد. CI اکنون job تست روی PostgreSQL سرویس‌محورِ موقت دارد؛ این staging نیست و تا اجرای workflow نتیجه‌ای تأیید نشده است. فرمان `npm run db:postgres:prepare -- --apply --confirm-staging` برای schema staging، `PG_REHEARSAL_DATABASE_URL` را از secret store می‌گیرد و فقط `sslmode=verify-ca` یا ترجیحاً `verify-full` می‌پذیرد؛ علاوه بر آن `PG_REHEARSAL_CONFIRM_STAGING=1` و flag فرمان نیاز است. URL/نام کاربری/گذرواژه چاپ نمی‌شوند. این تأییدها self-attestation مقصد هستند و connection isolation را خودکار ثابت نمی‌کنند.
 
-در وضعیت فعلی preflight عمداً PostgreSQL را **blocked** گزارش می‌کند: driver، قرارداد async، schema bootstrap و PGlite DDL smoke test موجودند؛ importer/resume/reconciliation داده، PostgreSQL واقعی، staging target/TLS confirmation و cutover فعال نیستند. حتی فراهم‌کردن URL به‌تنهایی مجوز cutover نیست.
+در وضعیت فعلی preflight عمداً PostgreSQL را **blocked** گزارش می‌کند: driver، قرارداد async، schema bootstrap و importer/reconciliation تست‌شده با دادهٔ مصنوعی موجودند؛ CI برای importer روی PostgreSQL واقعیِ موقت تنظیم شده، ولی staging target/TLS rehearsal و cutover اجرا نشده‌اند. حتی فراهم‌کردن URL به‌تنهایی مجوز cutover نیست.
 
 `npm run db:postgres:prepare` فقط schema plan چاپ می‌کند و شبکه نمی‌زند. اجرای staging schema به هر دو تأیید دستی زیر و TLS با بررسی CA/نام میزبان نیاز دارد؛ پیش از آن مالک platform باید non-production بودن endpoint را مستقل تأیید کند:
 
@@ -32,7 +32,31 @@
 PG_REHEARSAL_CONFIRM_STAGING=1 npm run db:postgres:prepare -- --apply --confirm-staging
 ```
 
-این فرمان فقط یک schema خالی یا schema از قبل ثبت‌شدهٔ EasyShop را می‌پذیرد؛ DSN چاپ نمی‌شود. فرمان data copy انجام نمی‌دهد و اپلیکیشن/feature flag را به PostgreSQL سوییچ نمی‌کند. تمرین staging بعدی باید importer قابل resume، مقایسهٔ شمارش/جمع مالی، سیاست داده‌های شخصی/پرداخت و rollback-forward/PITR روی PostgreSQL واقعی را پوشش دهد.
+این فرمان فقط یک schema خالی یا schema از قبل ثبت‌شدهٔ EasyShop را می‌پذیرد؛ DSN چاپ نمی‌شود. فرمان data copy انجام نمی‌دهد و اپلیکیشن/feature flag را به PostgreSQL سوییچ نمی‌کند.
+
+### Plan و import آفلاین/قابل resume
+
+ابزار import به‌طور پیش‌فرض فقط plan می‌سازد و به PostgreSQL وصل نمی‌شود. برای دیدن inventory یک snapshot consistency-checked:
+
+```bash
+npm run db:postgres:import -- --source /secure/path/easyshop-sanitized.sqlite
+```
+
+Apply فقط به یک snapshot **جدا از دیتابیس فعال** و از پیش پاک‌سازی/ناشناس‌سازی‌شده، target خالی staging، role محدود، TLS با `sslmode=verify-ca` یا `verify-full`، و دو تأیید جدا نیاز دارد:
+
+```bash
+# Values are injected by the approved secret/config store; never inline the DSN.
+PG_REHEARSAL_CONFIRM_STAGING=1 \
+PG_REHEARSAL_CONFIRM_SANITIZED_SNAPSHOT=1 \
+npm run db:postgres:import -- --source /secure/path/easyshop-sanitized.sqlite \
+  --apply --confirm-staging --confirm-sanitized-snapshot
+```
+
+Snapshot به‌صورت read-only باز می‌شود؛ فایل فعال `easyshop.db`، symlink و snapshot دارای sidecarهای WAL/SHM/journal رد می‌شوند. plan فقط تعداد رکوردها، hash و نام جدول/ستون‌های policy را چاپ می‌کند، نه مقدار ردیف‌ها. Import برای هر snapshot SHA-256 یک progress ledger دارد؛ resume فقط با همان فایل/hash مجاز است و target دارای دادهٔ قبلی یا snapshot دیگری رد می‌شود. پایان کار row count و digest هر جدول، جمع مالی orders بر اساس ارز/status و payments بر اساس status را تطبیق می‌دهد و backfill marker پرداخت را اجرا می‌کند؛ **هیچ cutover یا تغییر `DATABASE_DRIVER` انجام نمی‌دهد**.
+
+سیاست محافظه‌کارانه، `api_key`ها، password-reset/device/guest/pickup/payment tokens، شناسه/محتوای provider و card fields را حذف یا invalidate می‌کند؛ password hash حساب‌های کپی‌شده به marker نامعتبر staging تبدیل می‌شود. refresh token/OTP، checkout و callbackهای کوتاه‌عمر، passkey، settings، audit/AI logهای بررسی‌نشده، outbox وب‌هوک و چند جدول دارای credential/PII حذف می‌شوند تا credentialها دوباره provision و audit chain تازه ساخته شود. فهرست دقیق در `server/src/db/sqlite-postgres-import.js` است. این policy متن آزاد، نشانی، شماره تلفن، ایمیل و سایر PII عمومی را از snapshot پاک‌سازی نمی‌کند؛ مسئول داده باید پیش از اجرای import snapshot را مستقل sanitize و تأیید کند. flag sanitization attestation است، نه تشخیص خودکار محتوای PII.
+
+تست محلی `npm run test:postgres-import` از دادهٔ fixture مصنوعی و PGlite استفاده می‌کند. Workflow همین تغییر یک تست PostgreSQL 16 سرویس‌محور هم دارد؛ تا سبزشدن CI نتیجه‌اش معلوم نیست. هیچ snapshot یا اتصال staging در این workspace فراهم نشده، بنابراین این ابزار تا اینجا روی staging اجرا نشده است.
 
 ## Snapshot پشتیبان SQLite
 

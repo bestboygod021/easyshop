@@ -22,6 +22,7 @@ jobs:
       - run: npm run test:ops-preflight
       - run: npm run test:container-image
       - run: npm run test:postgres-staging
+      - run: npm run test:postgres-import
       - name: Run server tests with safe failure annotations
         shell: bash
         run: |
@@ -44,7 +45,7 @@ jobs:
       - run: npm audit --audit-level=high
 
   postgres-integration:
-    name: PostgreSQL schema, transaction, and backfill integration
+    name: PostgreSQL snapshot import, transaction, and backfill integration
     runs-on: ubuntu-24.04
     services:
       postgres:

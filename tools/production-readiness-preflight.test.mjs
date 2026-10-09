@@ -39,7 +39,10 @@ test('readiness preflight fails closed and states that it makes no external requ
   assert.equal(report.checks.postgresql_rehearsal.postgres_schema_ddl_smoke_test_present, true);
   assert.equal(report.checks.postgresql_rehearsal.postgres_real_server_ci_integration_defined, true);
   assert.equal(report.checks.postgresql_rehearsal.postgres_staging_integration_executed, false);
-  assert.equal(report.checks.postgresql_rehearsal.sqlite_snapshot_import_tool_present, false);
+  assert.equal(report.checks.postgresql_rehearsal.postgres_real_server_snapshot_import_test_present, true);
+  assert.equal(report.checks.postgresql_rehearsal.sqlite_snapshot_import_tool_present, true);
+  assert.equal(report.checks.postgresql_rehearsal.sqlite_snapshot_import_test_present, true);
+  assert.equal(report.checks.postgresql_rehearsal.sqlite_snapshot_import_ci_configured, true);
   assert.equal(report.checks.postgresql_rehearsal.application_database_url_support, true);
   assert.equal(report.checks.postgresql_rehearsal.sqlite_database_sync_still_active, true);
   assert.equal(report.checks.payment_sandbox.sandbox_transaction_performed, false);

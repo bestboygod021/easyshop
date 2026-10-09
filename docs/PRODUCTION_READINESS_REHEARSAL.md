@@ -19,6 +19,7 @@ Workflow اصلی در `.github/workflows/ci.yml` اکنون ESLint، preflight 
 ```bash
 npm run lint
 npm run test:ops-preflight
+npm run test:postgres-import
 npm test
 npm run build
 ```
@@ -27,16 +28,17 @@ npm run build
 
 ## ۲) PostgreSQL
 
-در این مرحله driver `pg`، repository ناهمگام اختیاری، facade سازگاری SQLite، runner نسخه‌دار/checksumدار و bootstrap DDL کامل ۹۵ جدول وجود دارند؛ smoke test با PGlite درون‌فرایندی است، نه PostgreSQL server واقعی. Import/resume/reconciliation داده و domain wiring/cutover هنوز نیست و API همچنان helperهای sync و `DatabaseSync` دارد، بنابراین gate **مسدود** می‌ماند. مقصد staging را فقط پس از تصویب mapping داده و مسیر بازگشت آماده کنید:
+در این مرحله driver `pg`، repository ناهمگام اختیاری، facade سازگاری SQLite، runner نسخه‌دار/checksumدار و bootstrap DDL کامل ۹۵ جدول وجود دارند. ابزار snapshot importer نیز plan آفلاین، batch/resume، redaction credentialها، payment backfill، digest ردیفی و reconciliation جمع مالی را پیاده می‌کند. چهار تست fixture مصنوعی با PGlite محلی سبز شده‌اند؛ CI برای تست importer روی PostgreSQL 16 موقت هم تنظیم شده، اما برای تغییر فعلی هنوز نتیجهٔ remote CI نداریم. API همچنان helperهای sync و `DatabaseSync` دارد و هیچ domain به repository PostgreSQL وصل نشده، پس gate **مسدود** می‌ماند. مقصد staging را فقط پس از تأیید mapping، snapshot پاک‌سازی‌شده و مسیر بازگشت آماده کنید:
 
 ```dotenv
 PG_REHEARSAL_DATABASE_URL=postgresql://<role>:<secret>@<staging-host>/<db>?sslmode=verify-full
 PG_REHEARSAL_CONFIRM_STAGING=1
+PG_REHEARSAL_CONFIRM_SANITIZED_SNAPSHOT=1
 ```
 
-URL را فقط از secret store در محیط runner تزریق کنید؛ در `.env` commitشده، CI log، issue، گزارش preflight یا چت ثبت نکنید. `PG_REHEARSAL_CONFIRM_STAGING=1` و `--confirm-staging` self-attestation هستند، نه تشخیص خودکار production/non-production. `npm run db:postgres:prepare -- --apply --confirm-staging` فقط schema را روی هدف خالی/ثبت‌شده ایجاد می‌کند؛ importer داده، mapping PII/payment، TLS/network rehearsal واقعی، reconciliation و rollback-forward/PITR جداگانه لازم‌اند. Preflight هیچ اتصال PostgreSQL نمی‌زند.
+URL را فقط از secret store در محیط runner تزریق کنید؛ در `.env` commitشده، CI log، issue، گزارش preflight یا چت ثبت نکنید. `PG_REHEARSAL_CONFIRM_STAGING=1` و `--confirm-staging` self-attestation هستند، نه تشخیص خودکار production/non-production. `npm run db:postgres:prepare -- --apply --confirm-staging` فقط schema را روی هدف خالی/ثبت‌شده ایجاد می‌کند. `npm run db:postgres:import -- --source <sanitized-snapshot>` فقط plan محلی می‌دهد؛ Apply به `--apply --confirm-staging --confirm-sanitized-snapshot` نیز نیاز دارد. Importer مقصد را از پیش به PostgreSQL سوییچ نمی‌کند، و snapshot را خودکار از PII متن آزاد پاک‌سازی نمی‌کند؛ مالک داده باید آن را پیش از rehearsal مستقل بررسی کند. Preflight هیچ اتصال PostgreSQL نمی‌زند.
 
-جزئیات طرح و نقاط cutover در [`DATABASE_MIGRATION_AND_RECOVERY.md`](./DATABASE_MIGRATION_AND_RECOVERY.md) است.
+جزئیات policy، commandها و نقاط cutover در [`DATABASE_MIGRATION_AND_RECOVERY.md`](./DATABASE_MIGRATION_AND_RECOVERY.md) است.
 
 ## ۳) Vault/KMS و secret mount
 
@@ -113,7 +115,7 @@ Preflight وجود فایل‌ها/مقادیر را می‌سنجد اما buck
 ## وضعیت فعلی این workspace
 
 - ESLint و CI gate: پیاده و محلی قابل‌اجرا؛ اجرای remote GitHub Actions/release واقعی در این تغییر انجام نشده است.
-- PostgreSQL: **blocked**؛ driver، async pilot، bootstrap schema 95-table، PGlite DDL test و CI integration سبز روی PostgreSQL 16 موقت موجودند؛ data importer/reconciliation/domain cutover، PostgreSQL staging endpoint/TLS و restore evidence موجود نیست.
+- PostgreSQL: **blocked**؛ driver، async pilot، schema 95-table، importer/resume، synthetic PGlite tests، و CI job برای PostgreSQL 16 موقت تعریف شده‌اند؛ remote CI این تغییر هنوز اجرا/تأیید نشده، و staging endpoint/TLS، sanitized production snapshot، domain wiring/cutover و restore evidence فراهم نیستند.
 - Vault: provider/pattern، policy read-only، Kubernetes workload-identity/Agent templates و file-rotation tests آماده‌اند؛ endpoint، auth role، cluster و live mount متصل نشده‌اند.
 - Payment: local mocked callback tests و evidence template موجودند؛ sandbox E2E، callback reachability، statement و independent review انجام نشده‌اند.
 - Recovery/canary: Kubernetes + Argo Rollouts + ingress-nginx انتخاب و templates/proposed SLO thresholds آماده‌اند؛ image pipeline، PostgreSQL، cluster/router/Prometheus، off-site Object Lock، staging restore و measured RTO/RPO نداریم.
