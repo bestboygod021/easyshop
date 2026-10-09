@@ -270,6 +270,9 @@ CREATE TABLE IF NOT EXISTS payment_callback_events (
   target_id       TEXT,
   error_code      TEXT,
   duration_ms     INTEGER NOT NULL DEFAULT 0,
+  callback_key    TEXT,
+  deliveries      INTEGER NOT NULL DEFAULT 1,
+  last_seen_at    TEXT,
   created_at      TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_payment_callback_target ON payment_callback_events(target_type,target_id,created_at DESC);
@@ -500,6 +503,22 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   entity_id  TEXT,
   meta       TEXT,
   ip         TEXT,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  chain_seq INTEGER,
+  previous_hash TEXT,
+  entry_hash TEXT,
+  key_version TEXT
 );
+CREATE TABLE IF NOT EXISTS privacy_requests (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL,
+  request_type TEXT NOT NULL CHECK (request_type IN ('access','erasure')),
+  status      TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','fulfilled')),
+  requested_at TEXT NOT NULL,
+  reviewed_at TEXT,
+  reviewed_by TEXT,
+  review_notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_privacy_requests_status ON privacy_requests(status, requested_at DESC);
+CREATE INDEX IF NOT EXISTS idx_privacy_requests_user ON privacy_requests(user_id, requested_at DESC);
 `;

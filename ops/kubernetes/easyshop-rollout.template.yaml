@@ -1,0 +1,172 @@
+# TEMPLATE / DO NOT APPLY until ops/kubernetes/README.md blockers are cleared.
+# In particular, the current API still uses a process-local SQLite DatabaseSync file.
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: easyshop-api
+  namespace: easyshop
+  labels:
+    app.kubernetes.io/name: easyshop-api
+spec:
+  replicas: 3
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 900
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: easyshop-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: easyshop-api
+    spec:
+      serviceAccountName: easyshop-runtime
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: easyshop-ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: api
+          image: ghcr.io/bestboygod021/easyshop/api@sha256:REPLACE_WITH_VERIFIED_IMAGE_DIGEST
+          imagePullPolicy: IfNotPresent
+          # Wait for Agent's initial render before config.js reads required production keys.
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              for key in JWT_SECRET AUDIT_LOG_HMAC_KEY_V1 BACKUP_ENCRYPTION_KEY AI_KEY_ENCRYPTION_KEY_V1; do
+                until test -s "/vault/secrets/$key"; do sleep 1; done
+              done
+              exec node server/src/index.js
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 4000
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: HOST
+              value: 0.0.0.0
+            - name: PORT
+              value: "4000"
+            - name: SECRETS_DIR
+              value: /vault/secrets
+            - name: SECRET_STORE_PROVIDER
+              value: vault-agent
+            - name: METRICS_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: easyshop-metrics-auth
+                  key: token
+            - name: AUDIT_LOG_HMAC_KEY_VERSION
+              value: v1
+            - name: AI_KEY_ENCRYPTION_KEY_VERSION
+              value: v1
+            - name: BACKUP_ENCRYPTION_ENABLED
+              value: "1"
+          volumeMounts:
+            - name: vault-secrets
+              mountPath: /vault/secrets
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+        - name: vault-agent
+          image: hashicorp/vault:1.21.0@sha256:REPLACE_WITH_VERIFIED_AGENT_IMAGE_DIGEST
+          imagePullPolicy: IfNotPresent
+          command: ["vault"]
+          args: ["agent", "-config=/etc/vault/agent.hcl"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: vault-agent-config
+              mountPath: /etc/vault
+              readOnly: true
+            - name: vault-auth-token
+              mountPath: /var/run/secrets/vault
+              readOnly: true
+            - name: vault-agent-token
+              mountPath: /vault/agent-token
+            - name: vault-secrets
+              mountPath: /vault/secrets
+      volumes:
+        - name: vault-agent-config
+          configMap:
+            name: easyshop-vault-agent-config
+            defaultMode: 0444
+        - name: vault-auth-token
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  audience: vault
+                  expirationSeconds: 600
+                  path: token
+        - name: vault-agent-token
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        - name: vault-secrets
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+  strategy:
+    canary:
+      maxSurge: 1
+      maxUnavailable: 0
+      stableService: easyshop-api-stable
+      canaryService: easyshop-api-canary
+      scaleDownDelaySeconds: 30
+      trafficRouting:
+        nginx:
+          stableIngress: easyshop-api
+      steps:
+        - setWeight: 10
+        - pause:
+            duration: 2m
+        - analysis:
+            templates:
+              - templateName: easyshop-canary-sli
+        - setWeight: 25
+        - pause:
+            duration: 5m
+        - analysis:
+            templates:
+              - templateName: easyshop-canary-sli
+        - setWeight: 50
+        - pause:
+            duration: 5m
+        - analysis:
+            templates:
+              - templateName: easyshop-canary-sli
+        - setWeight: 100

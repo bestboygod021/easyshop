@@ -5,21 +5,19 @@ import path from 'node:path';
 import multer from 'multer';
 import { config } from '../config.js';
 import { all, get, getSettings, nowIso, run, uid } from '../db/index.js';
-import { logAudit, requireAuth, requireRole } from '../middleware/auth.js';
+import { logAudit, requireAuth } from '../middleware/auth.js';
 import { asyncHandler, fail, ok, productPublic } from '../utils/helpers.js';
 import { cleanText, rateLimit, sniffImageBuffer } from '../middleware/security.js';
 import { generateInvoiceQrSvg } from '../services/qr-code.js';
 import { getSystemResourceMetrics, measureEventLoopLag } from '../services/system-metrics.js';
 import { smsOtpService } from '../services/sms-otp.js';
 import { flashSaleService } from '../services/flash-sale.js';
-import { isValidIranianNationalCode, isValidIranianIban } from '../services/iran-validators.js';
+import { isValidIranianNationalCode } from '../services/iran-validators.js';
 import { proformaInvoiceService } from '../services/proforma-invoice.js';
 import { isValidIranianPostalCode, guessProvinceByPostalCode } from '../services/postal-code.js';
 import { disputeService } from '../services/disputes.js';
 import { splitPaymentService } from '../services/split-payment.js';
 import { tieredDiscountService } from '../services/tiered-discounts.js';
-import { renderPersianInvoiceHtml } from '../services/invoice-pdf.js';
-import { urlHealthProber } from '../services/url-prober.js';
 import { iranPostTrackingService } from '../services/post-tracking.js';
 import { warrantyService } from '../services/warranty.js';
 import { deliveryFeedbackService } from '../services/delivery-feedback.js';
@@ -27,11 +25,9 @@ import { holidayThemeService } from '../services/holiday-theme.js';
 import { invoiceSigner } from '../services/invoice-signer.js';
 import { recommendationService } from '../services/recommendations.js';
 import { multiCurrencyService } from '../services/multi-currency.js';
-import { clientErrorAggregator } from '../services/client-error-aggregator.js';
 import { deliveryDateEstimator } from '../services/delivery-estimator.js';
 import { moadianTaxService } from '../services/moadian-tax.js';
 import { cartSanitizerService } from '../services/cart-sanitizer.js';
-import { loginHistoryService } from '../services/login-history.js';
 import { customerClvService } from '../services/customer-clv.js';
 import { giftWrapService } from '../services/gift-wrap.js';
 import { abandonedCartService } from '../services/abandoned-cart.js';
@@ -40,25 +36,21 @@ import { couponCleanupService } from '../services/coupon-cleanup.js';
 import { photoReviewService } from '../services/photo-review.js';
 import { productSpecSheetService } from '../services/spec-sheet.js';
 import { cartReservationService } from '../services/cart-reservation.js';
-import { ticketUrgencyScorer } from '../services/ticket-urgency.js';
 import { shahkarVerificationService } from '../services/shahkar-verification.js';
 import { salesExportService } from '../services/sales-export.js';
 import { productQnAService } from '../services/product-qna.js';
 import { authAnomalyAlertService } from '../services/auth-anomaly.js';
 import { gatewayCommissionAnalyzer } from '../services/gateway-commission.js';
 import { npsEngine } from '../services/nps-engine.js';
-import { bankReversalDispatcher } from '../services/bank-reversal.js';
 import { aiAutoTaggingService } from '../services/ai-auto-tagging.js';
 import { postalAddressMatcher } from '../services/postal-address-matcher.js';
 import { multiWarehouseService } from '../services/multi-warehouse.js';
-import { priceStockAuditService } from '../services/price-stock-audit.js';
 import { watermarkedInvoiceService } from '../services/watermarked-invoice.js';
 import { demandForecastService } from '../services/demand-forecast.js';
 import { deliverySlaTracker } from '../services/delivery-sla.js';
 import { productComparisonMatrix } from '../services/product-comparison.js';
 import { returnWindowService } from '../services/return-window.js';
 import { affiliateService } from '../services/affiliate.js';
-import { cardVerificationService } from '../services/card-verification.js';
 import { bnplCreditScoringService } from '../services/bnpl-scoring.js';
 import { warrantyExpiryService } from '../services/warranty-expiry.js';
 import { deliveryGeolocationService } from '../services/delivery-geolocation.js';
@@ -66,7 +58,6 @@ import { volumePricingService } from '../services/volume-pricing.js';
 import { smartBundleService } from '../services/smart-bundle.js';
 import { nationalCardVerifier } from '../services/national-card-verifier.js';
 import { timeSlotDeliveryService } from '../services/time-slot-delivery.js';
-import { consumableReplenishmentService } from '../services/consumable-replenishment.js';
 import { exitIntentSurveyService } from '../services/exit-intent-survey.js';
 import { vendorSettlementTaxSplitter } from '../services/vendor-settlement-tax.js';
 
@@ -178,7 +169,7 @@ router.get(
     const text = String(req.query.text || 'EasyShop').slice(0, 30);
     const seed = Number(req.query.seed || 7) || 7;
     const paletteIdx = Number(req.query.palette ?? seed) % PALETTES.length;
-    const [c1, c2, c3] = PALETTES[paletteIdx];
+    const [c1, , c3] = PALETTES[paletteIdx];
     const safe = text.replace(/[<>&"']/g, '');
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800">
   <defs>
@@ -886,9 +877,18 @@ router.get(
 /* --------------------------- پیش‌فاکتور با واترمارک -------------------------- */
 router.get(
   '/orders/:id/watermarked-invoice',
+  requireAuth,
   asyncHandler((req, res) => {
-    const invoice = watermarkedInvoiceService.generateWatermarkedInvoice(req.params.id);
+    const order = get('SELECT id, user_id FROM orders WHERE id = ? OR code = ?', req.params.id, req.params.id);
+    if (!order) return fail(res, 'سفارش یافت نشد.', 404);
+    const isOwner = Boolean(order.user_id && order.user_id === req.user.id);
+    const canManageInvoices = ['admin', 'seller'].includes(req.user.role);
+    if (!isOwner && !canManageInvoices) return fail(res, 'دسترسی به فاکتور این سفارش مجاز نیست.', 403);
+
+    const invoice = watermarkedInvoiceService.generateWatermarkedInvoice(order.id);
     if (!invoice) return fail(res, 'سفارش یافت نشد.', 404);
+    res.setHeader('Cache-Control', 'no-store, private');
+    res.setHeader('Pragma', 'no-cache');
     return ok(res, invoice);
   }),
 );
@@ -2529,10 +2529,7 @@ router.post(
 router.get(
   '/go/:slug',
   asyncHandler(async (req, res) => {
-    const click = await affiliateShortLinkTrackerService.recordClick(
-      req.params.slug,
-      req.ip,
-    );
+    const click = await affiliateShortLinkTrackerService.recordClick(req.params.slug);
     if (!click) {
       return fail(res, 'لینک کوتاه یافت نشد.', 404);
     }

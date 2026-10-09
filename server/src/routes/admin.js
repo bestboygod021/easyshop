@@ -1,16 +1,20 @@
 import express from 'express';
 import {
-  all, get, getSettings, notify, nowIso, parseJson, run, setSetting, stringifyJson, uid,
+  all, get, getSettings, notify, nowIso, run, setSetting, tx, uid,
+  verifyAuditLogIntegrity,
 } from '../db/index.js';
 import {
-  createUser, hashPassword, isStaff, logAudit, publicUser, requireAuth, requireRole,
+  createUser, hashPassword, logAudit, publicUser, requireAuth, requireRole,
 } from '../middleware/auth.js';
-import { asyncHandler, fail, ok, paginate, productPublic } from '../utils/helpers.js';
+import { asyncHandler, fail, HttpError, ok, paginate } from '../utils/helpers.js';
 import { config } from '../config.js';
 import { checkPasswordPolicy, cleanText, csvSafe, rateLimit } from '../middleware/security.js';
 import { revokeAllSessions } from '../middleware/auth.js';
 import { disconnectUser } from '../realtime/hub.js';
 import { broadcast, onlineStats } from '../realtime/hub.js';
+import { metricsRegistry } from '../services/metrics.js';
+import { getActiveSloAlerts } from '../services/slo-monitor.js';
+import { opsAlerts } from '../services/ops-alerts.js';
 import { hydrateOrder, STATUS_FLOW, STATUS_LABELS } from './orders.js';
 
 const router = express.Router();
@@ -96,6 +100,21 @@ router.get(
       traffic,
     });
   }),
+);
+
+router.get(
+  '/observability',
+  requireRole('admin'),
+  asyncHandler((_req, res) => ok(res, {
+    slo: metricsRegistry.getSloSnapshot({ windowMs: config.observability.sloWindowMs }),
+    targets: {
+      availability: config.observability.availabilityTarget,
+      http_p95_latency_ms: config.observability.httpP95TargetMs,
+      payment_verification_success: config.observability.paymentSuccessTarget,
+    },
+    active_alerts: getActiveSloAlerts(),
+    recent_alerts: opsAlerts.getRecentAlerts(50),
+  })),
 );
 
 /* -------------------------------- کاربران ------------------------------- */
@@ -486,7 +505,7 @@ router.put(
     for (const [key, value] of Object.entries(payload)) {
       if (!allowed.includes(key)) continue;
       setSetting(key, value);
-      updated[key] = value;
+      updated[key] = key === 'ai' ? getSettings().ai : value;
     }
     logAudit(req, 'settings_update', 'settings', null, { keys: Object.keys(updated) });
     return ok(res, { message: 'تنظیمات ذخیره شد.', settings: getSettings() });
@@ -564,6 +583,12 @@ router.get(
 );
 
 router.get(
+  '/audit-logs/integrity',
+  requireRole('admin'),
+  asyncHandler((_req, res) => ok(res, { integrity: verifyAuditLogIntegrity() })),
+);
+
+router.get(
   '/audit-logs',
   requireRole('admin'),
   asyncHandler((req, res) => {
@@ -574,6 +599,54 @@ router.get(
       page,
       limit,
     });
+  }),
+);
+
+/* ----------------------------- درخواست‌های حریم خصوصی ----------------------------- */
+router.get(
+  '/privacy-requests',
+  requireRole('admin'),
+  asyncHandler((req, res) => {
+    const { page, limit, offset } = paginate(req, 50, 200);
+    return ok(res, {
+      items: all(`SELECT r.*, u.full_name AS requester_name, u.email AS requester_email
+        FROM privacy_requests r LEFT JOIN users u ON u.id = r.user_id
+        ORDER BY r.requested_at DESC LIMIT ? OFFSET ?`, limit, offset),
+      total: get('SELECT COUNT(*) c FROM privacy_requests').c,
+      page,
+      limit,
+    });
+  }),
+);
+
+router.patch(
+  '/privacy-requests/:id',
+  requireRole('admin'),
+  rateLimit({ ...config.security.rateLimits.write, scope: 'privacy-request-review' }),
+  asyncHandler((req, res) => {
+    const request = get('SELECT * FROM privacy_requests WHERE id = ?', req.params.id);
+    if (!request) return fail(res, 'درخواست حریم خصوصی یافت نشد.', 404);
+    const status = String(req.body?.status || '');
+    const transitions = {
+      pending: ['approved', 'rejected'],
+      approved: ['fulfilled'],
+    };
+    if (!transitions[request.status]?.includes(status)) {
+      return fail(res, 'تغییر وضعیت درخواست مجاز نیست؛ تکمیل حذف داده باید پس از اجرای فرایند مصوب ثبت شود.', 409);
+    }
+    const notes = cleanText(req.body?.review_notes, { max: 600 }) || null;
+    const reviewedAt = nowIso();
+    tx(() => {
+      const changed = run('UPDATE privacy_requests SET status=?, reviewed_at=?, reviewed_by=?, review_notes=? WHERE id=? AND status=?',
+        status, reviewedAt, req.user.id, notes, request.id, request.status);
+      if (Number(changed.changes) !== 1) throw new HttpError('وضعیت درخواست هم‌زمان تغییر کرده است؛ دوباره بارگذاری کنید.', 409);
+      logAudit(req, 'privacy_request_review', 'privacy_request', request.id, {
+        request_type: request.request_type,
+        from: request.status,
+        to: status,
+      });
+    });
+    return ok(res, { request: get('SELECT * FROM privacy_requests WHERE id = ?', request.id) });
   }),
 );
 

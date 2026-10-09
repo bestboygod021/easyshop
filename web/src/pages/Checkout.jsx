@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   MapPin, CreditCard, Wallet, Truck, Banknote, Check, ShieldCheck, Package, Plus, Sparkles, ChevronLeft,
@@ -16,10 +16,11 @@ const SHIPPING = [
 ];
 
 const PAYMENTS = [
-  { value: 'gateway', label: 'پرداخت آنلاین (درگاه بانکی)', icon: CreditCard, desc: 'زرین‌پال / آسان پرداخت — امن و سریع' },
+  { value: 'gateway', label: 'پرداخت آنلاین (درگاه بانکی)', icon: CreditCard, desc: 'پرداخت امن از طریق درگاه بانکی' },
   { value: 'wallet', label: 'کیف پول EasyShop', icon: Wallet, desc: 'پرداخت از موجودی کیف پول' },
   { value: 'cod', label: 'پرداخت در محل (هنگام تحویل)', icon: Banknote, desc: 'فقط برای سفارش‌های داخل تهران' },
 ];
+const CHECKOUT_IDEMPOTENCY_STORAGE_KEY = 'easyshop.checkout.idempotencyKey';
 
 export default function Checkout() {
   const user = useAuth((s) => s.user);
@@ -30,6 +31,9 @@ export default function Checkout() {
   const [guestAddress, setGuestAddress] = useState({ receiver: '', phone: '', province: 'تهران', city: 'تهران', postal_code: '', line: '' });
   const [shipping, setShipping] = useState('post');
   const [payment, setPayment] = useState('gateway');
+  const [gatewayProviders, setGatewayProviders] = useState([]);
+  const [gatewayProvider, setGatewayProvider] = useState('');
+  const checkoutIdempotencyKey = useRef('');
   const [note, setNote] = useState('');
   const [loyalty, setLoyalty] = useState(0);
   const [placing, setPlacing] = useState(false);
@@ -38,8 +42,28 @@ export default function Checkout() {
   const [newAddress, setNewAddress] = useState({ title: 'آدرس جدید', receiver: '', phone: '', province: 'تهران', city: 'تهران', postal_code: '', line: '', is_default: true });
 
   useEffect(() => {
+    try {
+      const savedKey = sessionStorage.getItem(CHECKOUT_IDEMPOTENCY_STORAGE_KEY) || '';
+      if (/^[a-f0-9]{48}$/.test(savedKey)) checkoutIdempotencyKey.current = savedKey;
+    } catch { /* session storage may be unavailable; the in-memory key still protects retries */ }
+  }, []);
+
+  useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    let active = true;
+    get('/payments/providers')
+      .then((data) => {
+        if (!active) return;
+        const providers = Array.isArray(data.providers) ? data.providers : [];
+        setGatewayProviders(providers);
+        setGatewayProvider((current) => current || providers[0]?.provider || '');
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -93,20 +117,65 @@ export default function Checkout() {
     }
   };
 
+  const resetCheckoutIdempotencyKey = () => {
+    checkoutIdempotencyKey.current = '';
+    try { sessionStorage.removeItem(CHECKOUT_IDEMPOTENCY_STORAGE_KEY); } catch { /* session storage may be unavailable */ }
+  };
+
   const placeOrder = async () => {
+    if (!checkoutIdempotencyKey.current) {
+      const bytes = new Uint8Array(24);
+      if (!globalThis.crypto?.getRandomValues) {
+        toast('منبع تصادفی امن در دسترس نیست؛ سفارش ثبت نشد.', 'error');
+        return;
+      }
+      globalThis.crypto.getRandomValues(bytes);
+      checkoutIdempotencyKey.current = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      try { sessionStorage.setItem(CHECKOUT_IDEMPOTENCY_STORAGE_KEY, checkoutIdempotencyKey.current); } catch { /* in-memory retry protection remains active */ }
+    }
+
     setPlacing(true);
     try {
       const payload = {
         payment_method: payment,
+        ...(payment === 'gateway' && gatewayProvider ? { payment_provider: gatewayProvider } : {}),
         shipping_method: shipping,
         shipping_carrier: SHIPPING.find((s) => s.value === shipping)?.label,
         note,
         use_loyalty: loyalty,
         ...(addressId ? { address_id: addressId } : { address: guestAddress }),
       };
-      const data = await post('/orders/checkout', payload);
+      const data = await post('/orders/checkout', payload, {
+        headers: { 'idempotency-key': checkoutIdempotencyKey.current },
+      });
+
+      if (payment === 'gateway' && data.payment?.provider !== 'mock') {
+        const redirectUrl = new URL(data.payment?.redirect_url || '', window.location.origin);
+        if (redirectUrl.protocol !== 'https:') throw new Error('آدرس بازگشت امن درگاه نامعتبر است.');
+        useCart.setState({ items: [], totals: null, coupon: null });
+        resetCheckoutIdempotencyKey();
+        if (String(data.payment?.redirect_method || 'GET').toUpperCase() === 'POST'
+          && data.payment?.redirect_fields && typeof data.payment.redirect_fields === 'object') {
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = redirectUrl.toString();
+          for (const [name, value] of Object.entries(data.payment.redirect_fields)) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = String(value);
+            form.appendChild(input);
+          }
+          document.body.appendChild(form);
+          form.submit();
+        } else {
+          window.location.assign(redirectUrl.toString());
+        }
+        return;
+      }
+
       if (payment === 'gateway') {
-        // شبیه‌سازی بازگشت از درگاه بانکی؛ توکن/کد اقتدار صادرشده توسط سرور الزامی است
+        // تنها پرداخت آزمایشی به endpoint محلی می‌رود؛ درگاه واقعی فقط با callback و verify سمت سرور تسویه می‌شود.
         const authority = data.payment?.authority || data.order?.payment?.authority || '';
         const paid = await post(`/orders/${data.order.id}/pay`, {
           success: true,
@@ -118,6 +187,7 @@ export default function Checkout() {
       } else {
         setResult(data.order);
       }
+      resetCheckoutIdempotencyKey();
       await clear();
       toast('سفارش با موفقیت ثبت شد 🎉');
     } catch (err) {
@@ -227,12 +297,25 @@ export default function Checkout() {
             </h2>
             <div className="space-y-2">
               {PAYMENTS.map((p) => (
-                <label key={p.value} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition ${payment === p.value ? 'border-brand-500 bg-brand-500/10' : 'border-white/10 bg-white/5'}`}>
-                  <input type="radio" name="payment" checked={payment === p.value} onChange={() => setPayment(p.value)} className="accent-brand-500" />
+                <label key={p.value} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition ${payment === p.value ? 'border-brand-500 bg-brand-500/10' : 'border-white/10 bg-white/5'} ${p.value === 'gateway' && gatewayProviders.length === 0 ? 'cursor-not-allowed opacity-50' : ''}`}>
+                  <input
+                    type="radio"
+                    name="payment"
+                    checked={payment === p.value}
+                    disabled={p.value === 'gateway' && gatewayProviders.length === 0}
+                    onChange={() => setPayment(p.value)}
+                    className="accent-brand-500"
+                  />
                   <p.icon className="h-4 w-4 text-slate-400" />
                   <span className="flex-1">
                     <span className="block text-xs font-bold text-slate-100">{p.label}</span>
-                    <span className="block text-[11px] text-slate-500">{p.desc}</span>
+                    <span className="block text-[11px] text-slate-500">
+                      {p.value === 'gateway' && gatewayProviders.length === 1
+                        ? `پرداخت امن از طریق ${gatewayProviders[0].label}${gatewayProviders[0].sandbox ? ' (آزمایشی)' : ''}`
+                        : p.value === 'gateway' && !gatewayProviders.length
+                          ? 'درگاه پرداخت آنلاین پیکربندی نشده است.'
+                          : p.desc}
+                    </span>
                   </span>
                   {p.value === 'wallet' ? (
                     <span className="text-[11px] text-emerald-300">موجودی: {toman(user.wallet || 0)}</span>
@@ -240,6 +323,18 @@ export default function Checkout() {
                 </label>
               ))}
             </div>
+            {payment === 'gateway' && gatewayProviders.length > 1 ? (
+              <div className="mt-3">
+                <label className="label" htmlFor="gateway-provider">انتخاب درگاه</label>
+                <select id="gateway-provider" className="input" value={gatewayProvider} onChange={(event) => setGatewayProvider(event.target.value)}>
+                  {gatewayProviders.map((provider) => (
+                    <option key={provider.provider} value={provider.provider}>
+                      {provider.label}{provider.sandbox ? ' — محیط آزمایشی' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
 
             {user.loyalty_points > 0 ? (
               <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
@@ -302,7 +397,7 @@ export default function Checkout() {
             </div>
           </dl>
 
-          <button onClick={placeOrder} disabled={placing || !items.length} className="btn-primary mt-5 w-full">
+          <button onClick={placeOrder} disabled={placing || !items.length || (payment === 'gateway' && (!gatewayProviders.length || !gatewayProvider))} className="btn-primary mt-5 w-full">
             {placing ? 'در حال ثبت سفارش…' : payment === 'gateway' ? 'پرداخت و ثبت سفارش' : 'ثبت سفارش'}
             <ChevronLeft className="h-4 w-4" />
           </button>

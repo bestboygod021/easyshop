@@ -1,4 +1,4 @@
-import { all, run } from '../db/index.js';
+import { all } from '../db/index.js';
 
 /**
  * سرویس پایش نوسانات غیرعادی احراز هویت و هشدارهای حملات بروت فورس

@@ -1,0 +1,77 @@
+groups:
+  - name: easyshop-slo
+    interval: 30s
+    rules:
+      - alert: EasyShopApiUnavailable
+        expr: up{job="easyshop-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: easyshop-api
+        annotations:
+          summary: EasyShop API scrape is unavailable
+          description: Prometheus cannot scrape the EasyShop metrics endpoint for at least two minutes.
+
+      - alert: EasyShopHighServerErrorRate
+        expr: |
+          (
+            sum(rate(easyshop_http_requests_total{job="easyshop-api",status=~"5..",path!="/metrics",path!="/api/health"}[5m]))
+            /
+            clamp_min(sum(rate(easyshop_http_requests_total{job="easyshop-api",path!="/metrics",path!="/api/health"}[5m])), 0.001)
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          service: easyshop-api
+        annotations:
+          summary: EasyShop HTTP 5xx rate is above 1%
+          description: More than one percent of non-health HTTP requests returned 5xx for five minutes.
+
+      - alert: EasyShopHttpP95LatencyHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(easyshop_http_request_duration_ms_bucket{job="easyshop-api",path!="/metrics",path!="/api/health"}[5m]))
+          ) > 750
+        for: 10m
+        labels:
+          severity: warning
+          service: easyshop-api
+        annotations:
+          summary: EasyShop HTTP p95 latency is above 750 ms
+          description: The five-minute rolling p95 response latency exceeded the configured target for ten minutes.
+
+      - alert: EasyShopPaymentVerificationFailures
+        expr: |
+          (
+            sum(rate(easyshop_payment_attempts_total{job="easyshop-api",status=~"verification_error|settlement_pending|manual_review"}[10m]))
+            /
+            clamp_min(sum(rate(easyshop_payment_attempts_total{job="easyshop-api",status=~"verified_paid|verification_error|settlement_pending|manual_review"}[10m])), 0.001)
+          ) > 0.02
+        for: 5m
+        labels:
+          severity: critical
+          service: easyshop-payments
+        annotations:
+          summary: Payment verification reliability is below the EasyShop SLO
+          description: More than two percent of server-side verification outcomes are errors, pending settlement, or manual review.
+
+      - alert: EasyShopManualPaymentReview
+        expr: increase(easyshop_payment_attempts_total{job="easyshop-api",status="manual_review"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          service: easyshop-payments
+        annotations:
+          summary: A payment requires manual reconciliation
+          description: Review the protected /api/admin/observability endpoint and payment ledger.
+
+      - alert: EasyShopMemoryPressure
+        expr: process_resident_memory_bytes{job="easyshop-api"} > 1610612736
+        for: 10m
+        labels:
+          severity: warning
+          service: easyshop-api
+        annotations:
+          summary: EasyShop process RSS exceeds 1.5 GiB
+          description: Check memory growth, traffic, and the configured container limit.

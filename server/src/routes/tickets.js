@@ -160,7 +160,7 @@ router.post(
     const isInternal = staff && Boolean(req.body?.is_internal);
     // پیوست‌ها فقط مسیر آپلود داخلی و حداکثر ۵ مورد
     const attachments = Array.isArray(req.body?.attachments)
-      ? req.body.attachments.filter((u) => typeof u === 'string' && /^\/uploads\/[\w.\-]{1,80}$/.test(u)).slice(0, 5)
+      ? req.body.attachments.filter((u) => typeof u === 'string' && /^\/uploads\/[\w.-]{1,80}$/.test(u)).slice(0, 5)
       : [];
     const ts = nowIso();
     run(

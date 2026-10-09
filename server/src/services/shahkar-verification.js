@@ -1,5 +1,5 @@
 import { isValidIranianNationalCode, normalizeIranianMobile } from './iran-validators.js';
-import { run, get } from '../db/index.js';
+import { run } from '../db/index.js';
 
 /**
  * سرویس تطبیق هویت شاهکار (تطابق کدملی و شماره موبایل)

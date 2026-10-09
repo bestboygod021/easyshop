@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MessageSquare, Send, Bot, Sparkles, User, CheckCheck, Wifi, WifiOff } from 'lucide-react';
 import { get, patch, post, qs } from '../../lib/api';
 import { realtime } from '../../lib/realtime';
@@ -17,16 +17,7 @@ export default function ChatInbox() {
   const [connection, setConnection] = useState(realtime.connected);
   const endRef = useRef(null);
 
-  const loadList = () => {
-    get(`/chat/conversations?${qs({ limit: 50 })}`)
-      .then((d) => {
-        setConversations(d.items);
-        if (!active && d.items[0]) openConversation(d.items[0]);
-      })
-      .catch(() => setConversations([]));
-  };
-
-  const openConversation = async (conv) => {
+  const openConversation = useCallback(async (conv) => {
     setActive(conv);
     try {
       const detail = await get(`/chat/conversations/${conv.id}`);
@@ -35,18 +26,28 @@ export default function ChatInbox() {
     } catch (err) {
       toast(err.message, 'error');
     }
-  };
+  }, []);
+
+  const activeId = active?.id;
+  const loadList = useCallback(() => {
+    get(`/chat/conversations?${qs({ limit: 50 })}`)
+      .then((d) => {
+        setConversations(d.items);
+        if (!activeId && d.items[0]) openConversation(d.items[0]);
+      })
+      .catch(() => setConversations([]));
+  }, [activeId, openConversation]);
 
   useEffect(() => {
     loadList();
-  }, []);
+  }, [loadList]);
 
   useEffect(() => {
     const off = realtime.on((msg) => {
       if (msg.type === 'socket:open') setConnection(true);
       if (msg.type === 'socket:close' || msg.type === 'socket:error') setConnection(false);
       if (msg.type === 'chat:message') {
-        if (msg.message?.conversation_id === active?.id) {
+        if (msg.message?.conversation_id === activeId) {
           setMessages((m) => (m.find((x) => x.id === msg.message.id) ? m : [...m, msg.message]));
         }
         loadList();
@@ -54,7 +55,7 @@ export default function ChatInbox() {
       if (msg.type === 'conversation:update') loadList();
     });
     return off;
-  }, [active?.id]);
+  }, [activeId, loadList]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });

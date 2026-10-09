@@ -1,4 +1,4 @@
-import { run, get } from '../db/index.js';
+import { run } from '../db/index.js';
 
 /**
  * سرویس برگشت وجه و ابطال تراکنش‌های ناموفق بانکی (Mellat & Shaparak Reversal/Refund Dispatcher)

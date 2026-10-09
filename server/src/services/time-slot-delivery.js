@@ -1,4 +1,4 @@
-import { all, get, run } from '../db/index.js';
+import { get, run } from '../db/index.js';
 
 /**
  * سرویس زمان‌بندی هوشمند بازه‌های تحویل شهری با محدودیت ظرفیت ناوگان (Time-Slot Delivery Scheduler)

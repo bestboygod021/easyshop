@@ -1,4 +1,4 @@
-import { all, get, nowIso, run, uid } from '../db/index.js';
+import { all, get, nowIso } from '../db/index.js';
 
 /**
  * سرویس امتیازدهی، نرخ تامین کالا و محاسبه جریمه تاخیر تامین‌کنندگان/فروشندگان
@@ -12,7 +12,7 @@ export class SupplierSlaScoringService {
    * - جریمه تاخیرها بر اساس درصد ارزش سفارش
    * - امتیاز کل تامین‌کننده (SLA Score از ۱۰۰)
    */
-  calculateSupplierScore(vendorId, period = null) {
+  calculateSupplierScore(vendorId) {
     const vendor = get("SELECT id, full_name, email, role FROM users WHERE id = ? AND role = 'seller'", vendorId);
     if (!vendor) {
       throw new Error('فروشنده معتبر یافت نشد.');

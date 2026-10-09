@@ -73,11 +73,12 @@ export class DisputeService {
    * فهرست شکایات نزدیک به انقضای مهلت پاسخگویی
    */
   getOverdueOrUrgentDisputes() {
-    const now = new Date().toISOString();
+    const urgentCutoff = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
     return all(
-      `SELECT * FROM disputes 
-       WHERE status = 'open' 
-       ORDER BY deadline_at ASC LIMIT 50`
+      `SELECT * FROM disputes
+       WHERE status = 'open' AND deadline_at <= ?
+       ORDER BY deadline_at ASC LIMIT 50`,
+      urgentCutoff,
     );
   }
 }

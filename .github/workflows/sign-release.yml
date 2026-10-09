@@ -1,0 +1,53 @@
+name: Signed desktop release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  build-sign:
+    name: Build and sign Windows installers
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix desktop
+      - run: npm run desktop:build
+      - run: npm run sbom
+      - run: npm run sbom:desktop
+      - run: Copy-Item artifacts/*.cdx.json desktop/release/
+        shell: pwsh
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign each executable with Sigstore keyless signing
+        shell: pwsh
+        run: |
+          $executables = Get-ChildItem -Path desktop/release -Filter *.exe -File
+          if ($executables.Count -eq 0) { throw 'No Windows executable artifacts were produced.' }
+          foreach ($artifact in $executables) {
+            cosign sign-blob --yes --bundle "$($artifact.FullName).sigstore.json" $artifact.FullName
+          }
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'desktop/release/*.exe'
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            desktop/release/*.exe
+            desktop/release/*.sigstore.json
+            desktop/release/*.cdx.json
+          fail_on_unmatched_files: true

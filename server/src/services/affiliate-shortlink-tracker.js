@@ -48,7 +48,7 @@ export class AffiliateShortLinkTrackerService {
   /**
    * Record click on affiliate link
    */
-  async recordClick(slug, ipAddress = '127.0.0.1') {
+  async recordClick(slug) {
     const link = await this.db.get('SELECT * FROM affiliate_links WHERE slug = ? AND is_active = 1', [slug]);
     if (!link) return null;
 

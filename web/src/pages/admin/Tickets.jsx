@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Ticket, Search, Bot, UserCheck } from 'lucide-react';
 import { get, patch, qs } from '../../lib/api';
@@ -12,18 +12,19 @@ export default function AdminTickets() {
   const [status, setStatus] = useState('');
   const [priority, setPriority] = useState('');
   const [q, setQ] = useState('');
+  const [searchQ, setSearchQ] = useState('');
   const [agents, setAgents] = useState([]);
 
-  const load = () => {
+  const load = useCallback(() => {
     setData(null);
-    get(`/tickets?${qs({ status, priority, q, limit: 50 })}`)
+    get(`/tickets?${qs({ status, priority, q: searchQ, limit: 50 })}`)
       .then(setData)
       .catch((e) => toast(e.message, 'error'));
-  };
+  }, [status, priority, searchQ]);
 
   useEffect(() => {
     load();
-  }, [status, priority]);
+  }, [load]);
 
   useEffect(() => {
     get('/tickets/meta').then((d) => setAgents(d.agents)).catch(() => {});
@@ -72,7 +73,7 @@ export default function AdminTickets() {
         <div className="flex flex-wrap gap-2">
           <div className="relative min-w-[220px] flex-1">
             <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load()} placeholder="جستجوی موضوع یا کد تیکت…" className="input py-2 pr-10 text-xs" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setSearchQ(q)} placeholder="جستجوی موضوع یا کد تیکت…" className="input py-2 pr-10 text-xs" />
           </div>
           <select value={priority} onChange={(e) => setPriority(e.target.value)} className="input w-auto py-2 text-xs">
             <option value="">همه اولویت‌ها</option>

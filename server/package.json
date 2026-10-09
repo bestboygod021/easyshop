@@ -5,15 +5,27 @@
   "type": "module",
   "description": "EasyShop API — بک‌اند فروشگاه (Express + SQLite + WebSocket + AI Gateway)",
   "main": "src/index.js",
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "seed": "node src/db/seed.js --force",
+    "db:backup": "node src/db/backup.js create",
+    "db:retention:preview": "node src/services/data-retention.js preview",
+    "db:retention:apply": "node src/services/data-retention.js apply",
+    "ai-keys:rotate": "node src/services/ai/rotate-keys.js",
     "test": "node --test test/*.test.js",
     "test:security": "node --test test/security.test.js",
     "pentest": "node ../tools/pentest.mjs"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.223.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.223.0",
+    "@opentelemetry/sdk-metrics": "^2.12.0",
+    "@opentelemetry/sdk-node": "^0.223.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -21,6 +33,10 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
+    "pg": "^8.23.1",
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8"
   }
 }

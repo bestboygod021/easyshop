@@ -1,0 +1,46 @@
+name: Verify signed desktop release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing GitHub Release tag to verify (for example, v1.2.3)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  attestations: read
+
+jobs:
+  verify:
+    name: Verify signatures, provenance, and SBOMs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: sigstore/cosign-installer@v3
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+            echo "Invalid release tag." >&2
+            exit 2
+          fi
+          release_dir="$RUNNER_TEMP/easyshop-release"
+          mkdir -p "$release_dir"
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir "$release_dir" \
+            --pattern '*.exe' \
+            --pattern '*.exe.sigstore.json' \
+            --pattern '*.cdx.json'
+          echo "EASYSHOP_RELEASE_DIR=$release_dir" >> "$GITHUB_ENV"
+      - name: Verify signed artifacts and provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/verify-release-artifacts.sh "$EASYSHOP_RELEASE_DIR"

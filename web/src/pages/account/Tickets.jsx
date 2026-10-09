@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Ticket, Plus, MessageSquare } from 'lucide-react';
 import { get, post } from '../../lib/api';
@@ -13,16 +13,16 @@ export default function Tickets() {
   const [form, setForm] = useState({ subject: '', body: '', category: 'general', priority: 'normal' });
   const [busy, setBusy] = useState(false);
 
-  const load = (s = status) => {
+  const load = useCallback(() => {
     setItems(null);
-    get(`/tickets${s ? `?status=${s}` : ''}`)
+    get(`/tickets${status ? `?status=${status}` : ''}`)
       .then((d) => setItems(d.items))
       .catch(() => setItems([]));
-  };
+  }, [status]);
 
   useEffect(() => {
     load();
-  }, [status]);
+  }, [load]);
 
   const submit = async () => {
     setBusy(true);

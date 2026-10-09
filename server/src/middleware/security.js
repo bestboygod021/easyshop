@@ -190,6 +190,7 @@ export function checkPasswordPolicy(password, { email } = {}) {
 /*                        پاک‌سازی ورودی‌ها (XSS)                        */
 /* ------------------------------------------------------------------ */
 
+// eslint-disable-next-line no-control-regex -- This sanitizer intentionally matches and removes ASCII control characters.
 const CONTROL_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
 const HTML_ENTITIES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;' };
 

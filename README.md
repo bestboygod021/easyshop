@@ -5,8 +5,8 @@
 **یک فروشگاه اینترنتی کامل با بک‌اند اختصاصی، پنل مدیریت، پنل کاربری، پشتیبانی زنده و موتور هوش مصنوعی چندمدلی**
 
 [![Platforms](https://img.shields.io/badge/platforms-Web%20%7C%20iOS%20%7C%20Android%20%7C%20Windows-6366f1)](#-پلتفرمها)
-[![Node](https://img.shields.io/badge/node-%3E%3D20.11-22c55e)](#-پیشنیازها)
-[![Tests](https://img.shields.io/badge/tests-42%20passed-22c55e)](#-تستها)
+[![Node](https://img.shields.io/badge/node-%3E%3D22.13-22c55e)](#-پیشنیازها)
+[![Tests](https://img.shields.io/badge/tests-321%20passed-22c55e)](#-تستها)
 
 </div>
 
@@ -92,7 +92,7 @@ EasyShop یک فروشگاه آنلاین حرفه‌ای و **کاملاً فا
 
 ## 🧱 پشته فناوری
 
-**بک‌اند:** Node.js ≥ 20 (ماژول داخلی `node:sqlite`) · Express 4 · JWT (bcrypt + refresh token) · WebSocket (`ws`) · Multer · Helmet · SQLite (بدون نصب سرور دیتابیس)
+**بک‌اند:** Node.js ≥ 22.13 (ماژول داخلی `node:sqlite` بدون فلگ آزمایشی) · Express 4 · JWT (bcrypt + refresh token) · WebSocket (`ws`) · Multer · Helmet · SQLite (بدون نصب سرور دیتابیس)
 
 **فرانت‌اند:** React 18 · Vite 5 · React Router 6 · Zustand · Tailwind CSS 3 · Recharts · Lucide · PWA (Service Worker + Manifest)
 
@@ -122,10 +122,17 @@ npm start
 دستورهای دیگر:
 
 ```bash
-npm test                 # اجرای ۴۲ تست یکپارچه بک‌اند
+npm test                 # اجرای کامل تست‌های بک‌اند
 npm run seed             # بازنشانی و ساخت داده‌های دمو
 npm run preview          # build + اجرای سرور
+npm run lint             # ESLint با quality gate در CI
+npm run --silent ops:preflight # کنترل آمادگی محلی؛ بدون اتصال بیرونی
+npm run load:test        # آزمون بار محلی با SQLite موقت
+npm run db:backup        # snapshot SQLite (در production رمزگذاری‌شده)
+npm run db:retention:preview # پیش‌نمایش حذف داده‌های منقضی
 ```
+
+Runbookهای production: [آمادگی و تمرین staging](docs/PRODUCTION_READINESS_REHEARSAL.md)، [بازیابی/پشتیبان](docs/BACKUP_AND_RECOVERY.md)، [مهاجرت PostgreSQL](docs/DATABASE_MIGRATION_AND_RECOVERY.md)، [چرخش کلید AI](docs/AI_KEY_ROTATION.md)، [چرخهٔ عمر secretها](docs/SECRET_LIFECYCLE.md)، [پرداخت](docs/PAYMENT_SECURITY_REVIEW.md)، [retention/audit](docs/RETENTION_AND_AUDIT.md)، و [load/SLO](docs/LOAD_TESTING_AND_AUTOSCALING.md). آزمون محلی یا preflight به‌تنهایی تأیید سرویس بیرونی/production نیست.
 
 ---
 
@@ -160,8 +167,8 @@ easyshop/
 │   │   ├── routes/             # auth، products، categories، cart، orders،
 │   │   │                       # account، admin، tickets، chat، ai، misc
 │   │   └── utils/helpers.js    # پاسخ‌ها، صفحه‌بندی، محاسبات سبد/سفارش
-│   ├── test/api.test.js        # ۴۲ تست یکپارچه (node:test)
-│   ├── test/security.test.js   # ۹۸ تست امنیتی (احراز هویت، IDOR، تزریق، WS…)
+│   ├── test/api.test.js        # ۵۰ تست یکپارچه (node:test)
+│   ├── test/security.test.js   # ۹۹ تست امنیتی (احراز هویت، IDOR، تزریق، WS…)
 │   └── data/                   # easyshop.db + uploads (خارج از گیت)
 ├── web/                        # اپ وب/موبایل‌وب (React + Vite + Tailwind)
 │   └── src/
@@ -230,7 +237,7 @@ npm run desktop:build      # خروجی در desktop/release/ (نصب‌کنند
 
 کلیدها را می‌توانید از دو راه تنظیم کنید:
 
-**۱) پنل مدیریت → «مدل‌ها و کلیدهای API»** → انتخاب ارائه‌دهنده، درج کلید، تست اتصال، تعیین مدل پیش‌فرض و اولویت.
+**۱) پنل مدیریت → «مدل‌ها و کلیدهای API»** → انتخاب ارائه‌دهنده، درج کلید، تست اتصال، تعیین مدل پیش‌فرض و اولویت. برای ذخیره‌ی امن کلید پنل، `AI_KEY_ENCRYPTION_KEY` با حداقل ۳۲ بایت را از Secret Manager یا محیط اجرا تنظیم کنید؛ این کلید را همراه پایگاه داده پشتیبان‌گیری کنید و بدون مهاجرت کلیدهای ذخیره‌شده عوض نکنید.
 
 **۲) متغیرهای محیطی** در `server/.env`:
 
@@ -246,6 +253,8 @@ OLLAMA_BASE_URL=http://localhost:11434
 ```
 
 رفتار موتور: درخواست به مدل انتخابی → در صورت خطا (نبود کلید، انقضای سهمیه، قطعی شبکه) به‌صورت خودکار به مدل بعدی و در نهایت به **موتور داخلی** سقوط می‌کند؛ بنابراین فروشگاه هرگز متوقف نمی‌شود. مصرف توکن و هزینه در «لاگ فراخوانی‌ها» ثبت می‌شود.
+
+> checkout اکنون callback امن، idempotency و verify سمت سرور دارد و برای Zarinpal، Zibal، MrPardakht و Mellat adapter ارائه می‌کند؛ پیش از پذیرش وجه واقعی باید credentials/allowlist/`PUBLIC_URL` و قرارداد callback در sandbox پذیرنده تأیید شوند. Mock فقط development/test است؛ SnappPay و `wallet/topup` فعلاً پرداخت واقعی نیستند. راهنمای مشاهده‌پذیری، backup/PITR و زنجیرهٔ تأمین در `docs/OBSERVABILITY.md`, `docs/DATABASE_MIGRATION_AND_RECOVERY.md` و `docs/SUPPLY_CHAIN.md` است.
 
 ---
 
@@ -271,7 +280,9 @@ OLLAMA_BASE_URL=http://localhost:11434
 ## ✅ تست‌ها
 
 ```bash
-npm test              # ۱۴۰ تست: ۴۲ عملکردی + ۹۸ امنیتی
+npm test              # ۳۲۱ تست بک‌اند: API، امنیت و suiteهای تخصصی
+npm run lint          # ESLint با quality gate
+npm run test:ops-preflight # تست‌های preflight بدون اتصال خارجی
 npm run test:security # فقط تست‌های امنیتی
 npm run pentest       # تست نفوذ زنده روی سرور در حال اجرا (۹۱ سناریو)
 npm run security      # هر دو مورد بالا
@@ -280,8 +291,9 @@ npm run security      # هر دو مورد بالا
 > اجرای پیاپی تست نفوذ: پیش از هر اجرا سهمیه‌ی محدودیت نرخ و قفل ورود را می‌توان بدون ری‌استارت پاک کرد:
 > `kill -USR2 $(pgrep -f 'node src/index.js')`
 
-* **۴۲ تست یکپارچه** در ۹ گروه: سلامت سرویس، احراز هویت، محصولات و دسته‌بندی، سبد و سفارش (تا پرداخت)، تخفیف و کیف پول، تیکت و چت، هوش مصنوعی چندمدلی، پنل مدیریت و استاتیک/SPA.
-* **۹۸ تست امنیتی** در ۱۱ گروه: احراز هویت/نشست، IDOR و کنترل دسترسی، سیاست رمز و brute-force، محدودیت نرخ، تزریق/XSS/Prototype Pollution، آپلود فایل، هدرها و CSRF، منطق کسب‌وکار، WebSocket، توابع هسته و اعتبارسنجی نوشتن کاتالوگ/سفارش مجدد.
+* **۵۰ تست یکپارچهٔ API** در ۱۰ گروه: سلامت سرویس، احراز هویت، محصولات و دسته‌بندی، سبد و سفارش، رزرو موجودی، تخفیف و کیف پول، تیکت و چت، هوش مصنوعی چندمدلی، پنل مدیریت و استاتیک/SPA.
+* **۹۹ تست امنیتی** در ۱۱ گروه: احراز هویت/نشست، IDOR و کنترل دسترسی، سیاست رمز و brute-force، محدودیت نرخ، تزریق/XSS/Prototype Pollution، آپلود فایل، هدرها و CSRF، منطق کسب‌وکار، WebSocket، توابع هسته و اعتبارسنجی نوشتن کاتالوگ/سفارش مجدد.
+* **۱۷۲ تست تکمیلی** برای رگرسیون‌ها و سرویس‌های تخصصی، از جمله backup/recovery، retention، audit، observability، پرداخت، privacy و تنظیمات production (در مجموع ۳۲۱ تست).
 * **۹۱ سناریوی تست نفوذ زنده** (`tools/pentest.mjs`) با گزارش فارسی و خروجی JSON.
 
 تست‌ها در یک پوشه‌ی موقت اجرا می‌شوند و **دیتابیس فروشگاه را دست نمی‌زنند**.

@@ -1,4 +1,4 @@
-import { all, get, nowIso, run, stringifyJson, uid } from '../db/index.js';
+import { all, nowIso, run, stringifyJson, uid } from '../db/index.js';
 import { config } from '../config.js';
 
 export function enqueueWebhookEvent(eventType, payload, targetUrl = null) {

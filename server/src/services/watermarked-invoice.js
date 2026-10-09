@@ -1,5 +1,13 @@
 import { get, all } from '../db/index.js';
 
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+})[char]);
+
 /**
  * سرویس صدور پیش‌فاکتور رسمی با واترمارک دیجیتال وضعیت پرداخت
  */
@@ -29,12 +37,16 @@ export class WatermarkedInvoiceService {
     const isPaid = order.payment_status === 'paid';
     const watermarkText = isPaid ? 'پرداخت شده (تسویه کامل)' : 'پیش‌فاکتور (پرداخت‌نشده)';
     const watermarkColor = isPaid ? '#16a34a' : '#dc2626';
+    const invoiceCode = escapeHtml(order.code || order.id);
+    const customerName = escapeHtml(order.customer_name || 'مشتری آزاد');
+    const customerPhone = escapeHtml(order.customer_phone || '-');
+    const customerNationalId = escapeHtml(order.customer_national_id || '-');
 
     const html = `<!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <title>صورت‌حساب رسمی: ${order.code || order.id}</title>
+  <title>صورت‌حساب رسمی: ${invoiceCode}</title>
   <style>
     body { font-family: Tahoma, sans-serif; margin: 40px; color: #1e293b; position: relative; }
     .watermark {
@@ -56,12 +68,12 @@ export class WatermarkedInvoiceService {
   <div class="watermark">${watermarkText}</div>
   <div class="header">
     <h2>فروشگاه زنجیره‌ای ایزی‌شاپ</h2>
-    <div><strong>شماره سفارش:</strong> ${order.code || order.id}</div>
+    <div><strong>شماره سفارش:</strong> ${invoiceCode}</div>
   </div>
   <div style="margin-top: 15px;">
-    <strong>خریدار:</strong> ${order.customer_name || 'مشتری آزاد'} | 
-    <strong>تلفن:</strong> ${order.customer_phone || '-'} | 
-    <strong>کد ملی:</strong> ${order.customer_national_id || '-'}
+    <strong>خریدار:</strong> ${customerName} |
+    <strong>تلفن:</strong> ${customerPhone} |
+    <strong>کد ملی:</strong> ${customerNationalId}
   </div>
   <table class="table">
     <thead>
@@ -71,7 +83,7 @@ export class WatermarkedInvoiceService {
       ${items.map((it, idx) => `
         <tr>
           <td>${idx + 1}</td>
-          <td>${it.name_fa}</td>
+          <td>${escapeHtml(it.name_fa)}</td>
           <td>${it.qty}</td>
           <td>${(it.unit_price || 0).toLocaleString('fa-IR')}</td>
           <td>${((it.unit_price || 0) * it.qty).toLocaleString('fa-IR')}</td>

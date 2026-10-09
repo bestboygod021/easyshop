@@ -1,3 +1,4 @@
+import './isolated-seed.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { all } from '../src/db/index.js';
@@ -52,10 +53,14 @@ describe('Round 22 Improvements: Price Drop Alerts, Multi-Warehouse Stock, RMA Q
       step: 'passed_inspection',
       notes: 'تست فنی انجام شد، ایراد فیزیکی تایید گردید.',
       refundAmount: 500000,
+      inspectorId: 'usr_rma_inspector_test',
     });
 
     assert.equal(inspected.new_status, 'refunded');
     assert.equal(inspected.refund_amount, 500000);
+    assert.equal(inspected.inspector_id, 'usr_rma_inspector_test');
+    const [savedInspection] = all('SELECT inspector_id FROM rma_returns WHERE id = ?', req.rma_id);
+    assert.equal(savedInspection.inspector_id, 'usr_rma_inspector_test');
   });
 
   it('4. Dynamic Post Tare Tariff: calculates postal rates factoring weight and province zones', () => {

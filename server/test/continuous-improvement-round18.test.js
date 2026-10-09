@@ -1,3 +1,4 @@
+import './isolated-seed.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { bnplCreditScoringService } from '../src/services/bnpl-scoring.js';
@@ -78,5 +79,9 @@ describe('Round 18 Improvements: BNPL Scoring, Warranty Expiry, Geolocation, Vol
     assert.ok(bundles.length >= 1);
     assert.ok(bundles[0].savings > 0);
     assert.ok(bundles[0].items.length >= 2);
+
+    const cartProductIds = all("SELECT id FROM products WHERE status = 'active' LIMIT 2").map((product) => product.id);
+    const cartRelevantBundles = smartBundleService.getSuggestedBundles(cartProductIds);
+    assert.ok(Array.isArray(cartRelevantBundles));
   });
 });

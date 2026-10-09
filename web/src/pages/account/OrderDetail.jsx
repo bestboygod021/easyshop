@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Package, Truck, MapPin, CreditCard, XCircle, RotateCcw, CheckCircle2, Clock, ChevronRight,
@@ -17,11 +17,11 @@ export default function OrderDetail() {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const load = () => get(`/orders/${id}`).then(setData).catch((e) => toast(e.message, 'error'));
+  const load = useCallback(() => get(`/orders/${id}`).then(setData).catch((e) => toast(e.message, 'error')), [id]);
 
   useEffect(() => {
     load();
-  }, [id]);
+  }, [load]);
 
   if (!data?.order) return <Loading />;
   const o = data.order;

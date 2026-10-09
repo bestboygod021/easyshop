@@ -1,4 +1,4 @@
-import { all, get, run } from '../db/index.js';
+import { all, get } from '../db/index.js';
 
 /**
  * سرویس یادآوری سبدهای خرید رهاشده (Abandoned Cart Recovery)

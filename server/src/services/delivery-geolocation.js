@@ -1,4 +1,4 @@
-import { run, get } from '../db/index.js';
+import { run } from '../db/index.js';
 
 /**
  * سرویس ثبت مختصات جغرافیایی دقیق نقشه برای آدرس‌های ارسال (Delivery Geolocation Pinpoint)

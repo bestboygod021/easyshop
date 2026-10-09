@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api, auth, get, post, put, del, api as _api } from '../lib/api';
+import { api, auth, get, post, patch, del, api as _api } from '../lib/api';
 import { realtime } from '../lib/realtime';
 
 /* --------------------------------- احراز هویت ------------------------------ */
@@ -61,7 +61,7 @@ export const useAuth = create((set, get_) => ({
     }
   },
   async update(payload) {
-    const data = await put('/auth/me', payload);
+    const data = await patch('/auth/me', payload);
     localStorage.setItem('easyshop.user', JSON.stringify(data.user));
     set({ user: data.user });
     return data.user;

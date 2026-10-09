@@ -1,4 +1,4 @@
-import { all, get, run } from '../db/index.js';
+import { all, run } from '../db/index.js';
 
 /**
  * سرویس پرسش و پاسخ تعاملی محصول با پاسخ کارشناسان (Product Q&A)

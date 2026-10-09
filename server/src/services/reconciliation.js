@@ -1,4 +1,4 @@
-import { all, get, nowIso, run, stringifyJson, uid } from '../db/index.js';
+import { all, get, nowIso, run, uid } from '../db/index.js';
 
 /**
  * Reconciles an external bank statement list against internal payment records.
@@ -31,7 +31,7 @@ export function reconcileBankSettlements(bankTransactions, provider = 'zibal') {
     );
 
     let status = 'matched';
-    let details = null;
+    let details;
     let orderId = null;
 
     if (!payment) {

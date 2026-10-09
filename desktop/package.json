@@ -6,20 +6,21 @@
   "main": "main.cjs",
   "author": "EasyShop",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "dev": "cross-env EASYSHOP_DEV=1 electron .",
     "start": "electron .",
-    "dist": "electron-builder --win --x64",
-    "dist:all": "electron-builder -mwl",
-    "pack": "electron-builder --dir"
-  },
-  "dependencies": {
-    "electron-store": "^8.2.0"
+    "dist": "node scripts/prepare-runtime.cjs && electron-builder --win --x64",
+    "dist:all": "node scripts/prepare-runtime.cjs && electron-builder -mwl",
+    "pack": "node scripts/prepare-runtime.cjs && electron-builder --dir && node scripts/verify-package.cjs",
+    "test:runtime": "cross-env ELECTRON_RUN_AS_NODE=1 electron scripts/sqlite-smoke.cjs"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
-    "electron": "^33.2.1",
-    "electron-builder": "^25.1.8"
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "ir.easyshop.desktop",
@@ -37,7 +38,7 @@
     ],
     "extraResources": [
       {
-        "from": "../server",
+        "from": "runtime/server",
         "to": "server",
         "filter": [
           "**/*",

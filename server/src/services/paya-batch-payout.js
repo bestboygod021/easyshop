@@ -1,4 +1,4 @@
-import { all, get, nowIso, run, uid } from '../db/index.js';
+import { all, nowIso, run } from '../db/index.js';
 
 /**
  * ماژول تسویه حساب گروهی پایا/ساتنا برای فروشندگان (Automated Paya/Satna Batch Payouts)

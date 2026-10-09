@@ -2,8 +2,8 @@ import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { config } from '../config.js';
-import { all, get, run, uid, nowIso, stringifyJson, parseJson } from '../db/index.js';
-import { hashToken, safeEqual, checkPasswordPolicy } from './security.js';
+import { all, audit as writeAudit, get, run, uid, nowIso, parseJson, tx } from '../db/index.js';
+import { hashToken, checkPasswordPolicy } from './security.js';
 
 export const hashPassword = (password) => bcrypt.hashSync(password, 10);
 export const verifyPassword = (password, hash) => bcrypt.compareSync(password, hash);
@@ -71,22 +71,34 @@ function findRefreshRow(token) {
 }
 
 export function rotateRefreshToken(token) {
-  const row = findRefreshRow(token);
-  if (!row) return null;
+  const rawToken = typeof token === 'string' ? token.trim() : '';
+  if (!rawToken || rawToken.length > 200) return null;
 
-  // تشخیص استفاده‌ی مجدد از توکن باطل‌شده → کل خانواده‌ی توکن‌ها باطل می‌شود
-  if (row.revoked) {
-    if (row.family) run('UPDATE refresh_tokens SET revoked = 1 WHERE family = ?', row.family);
-    else run('UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?', row.user_id);
-    return null;
-  }
-  if (new Date(row.expires_at) < new Date()) return null;
+  // یک تراکنش اتمی مانع صدور دو refresh token معتبر در درخواست‌های هم‌زمان می‌شود.
+  return tx(() => {
+    const row = findRefreshRow(rawToken);
+    if (!row) return null;
 
-  const user = get('SELECT * FROM users WHERE id = ?', row.user_id);
-  if (!user || user.status === 'blocked') return null;
+    // تشخیص استفاده‌ی مجدد از توکن باطل‌شده → کل خانواده‌ی توکن‌ها باطل می‌شود
+    if (row.revoked) {
+      if (row.family) run('UPDATE refresh_tokens SET revoked = 1 WHERE family = ?', row.family);
+      else run('UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?', row.user_id);
+      return null;
+    }
+    if (new Date(row.expires_at) < new Date()) return null;
 
-  run('UPDATE refresh_tokens SET revoked = 1 WHERE id = ?', row.id);
-  return { user, ...signRefreshToken(user, { family: row.family }) };
+    const user = get('SELECT * FROM users WHERE id = ?', row.user_id);
+    if (!user || user.status === 'blocked') return null;
+
+    const revoked = run('UPDATE refresh_tokens SET revoked = 1 WHERE id = ? AND revoked = 0', row.id);
+    if (!revoked.changes) {
+      if (row.family) run('UPDATE refresh_tokens SET revoked = 1 WHERE family = ?', row.family);
+      else run('UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?', row.user_id);
+      return null;
+    }
+
+    return { user, ...signRefreshToken(user, { family: row.family }) };
+  });
 }
 
 /** ابطال همه‌ی نشست‌های یک کاربر */
@@ -214,18 +226,15 @@ export function optionalAuth(req, _res, next) {
 }
 
 export function logAudit(req, action, entity, entityId, meta) {
-  run(
-    'INSERT INTO audit_logs (id,user_id,user_name,action,entity,entity_id,meta,ip,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
-    uid('log'),
-    req.user?.id ?? null,
-    req.user?.full_name ?? 'سیستم',
+  return writeAudit({
+    userId: req.user?.id ?? null,
+    userName: req.user?.full_name ?? 'سیستم',
     action,
-    entity ?? null,
-    entityId ?? null,
-    stringifyJson(meta ?? {}),
-    req.ip ?? null,
-    nowIso(),
-  );
+    entity: entity ?? null,
+    entityId: entityId ?? null,
+    meta: meta ?? {},
+    ip: req.ip ?? null,
+  });
 }
 
 export function staffUsers() {

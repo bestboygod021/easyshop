@@ -1,10 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 // در حالت توسعه، درخواست‌های /api و /ws به بک‌اند (پورت ۴۰۰۰) پروکسی می‌شوند
 // تا مرورگر فقط با یک دامنه کار کند (سازگار با پیش‌نمایش‌های ابری و شبکه محلی).
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: {
     host: '0.0.0.0',
     port: Number(process.env.WEB_PORT || 5173),

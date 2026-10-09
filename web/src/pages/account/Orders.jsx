@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Package, Filter, Repeat } from 'lucide-react';
 import { get, post, qs } from '../../lib/api';
@@ -11,16 +11,16 @@ export default function AccountOrders() {
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
 
-  const load = (s = status, p = page) => {
+  const load = useCallback(() => {
     setData(null);
-    get(`/orders?${qs({ status: s, page: p, limit: 10 })}`)
+    get(`/orders?${qs({ status, page, limit: 10 })}`)
       .then(setData)
       .catch((e) => toast(e.message, 'error'));
-  };
+  }, [status, page]);
 
   useEffect(() => {
     load();
-  }, [status, page]);
+  }, [load]);
 
   const reorder = async (id) => {
     try {

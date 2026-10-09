@@ -74,6 +74,7 @@ export class RmaReturnFraudShieldService {
     return {
       order_id: orderId,
       product_id: productId,
+      return_reason: typeof returnReason === 'string' ? returnReason.trim().slice(0, 500) : '',
       risk_assessment: riskAssessment,
       requires_supervisor_review: isHighRisk,
       mandatory_checklist: [

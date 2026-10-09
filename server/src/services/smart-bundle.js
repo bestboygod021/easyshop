@@ -9,12 +9,25 @@ export class SmartBundleService {
    * @param {string[]} cartProductIds شناسه‌های محصولات داخل سبد خریدار
    */
   getSuggestedBundles(cartProductIds = []) {
-    // بسته‌های پیش‌ساخته تعریف‌شده در سیستم
+    const cartIds = [...new Set((Array.isArray(cartProductIds) ? cartProductIds : [])
+      .map((id) => String(id).trim())
+      .filter(Boolean))].slice(0, 50);
+    const cartIdPlaceholders = cartIds.map(() => '?').join(', ');
+    const bundleOrder = cartIds.length
+      ? `ORDER BY CASE WHEN EXISTS (
+          SELECT 1 FROM product_bundle_items bi
+          WHERE bi.bundle_id = b.id AND bi.product_id IN (${cartIdPlaceholders})
+        ) THEN 0 ELSE 1 END, b.created_at DESC`
+      : 'ORDER BY b.created_at DESC';
+
+    // بسته‌های پیش‌ساخته تعریف‌شده در سیستم؛ بسته‌های مرتبط با سبد در اولویت‌اند.
     const bundles = all(
       `SELECT b.id, b.title, b.discount_pct
        FROM product_bundles b
        WHERE b.is_active = 1
-       LIMIT 5`
+       ${bundleOrder}
+       LIMIT 5`,
+      ...cartIds,
     );
 
     if (bundles.length > 0) {
@@ -43,12 +56,16 @@ export class SmartBundleService {
     }
 
     // در صورت عدم تعریف باندل در جدول، پیشنهاد بسته مکمل پویا از محصولات مرتبط
+    const excludeCartItems = cartIds.length
+      ? `AND id NOT IN (${cartIdPlaceholders})`
+      : '';
     const complementary = all(
       `SELECT id, name_fa, price, thumbnail, rating_avg
        FROM products
-       WHERE status = 'active'
+       WHERE status = 'active' ${excludeCartItems}
        ORDER BY sold_count DESC
-       LIMIT 3`
+       LIMIT 3`,
+      ...cartIds,
     );
 
     if (complementary.length >= 2) {

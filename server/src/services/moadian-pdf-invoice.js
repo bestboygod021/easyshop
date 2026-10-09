@@ -13,7 +13,7 @@ export class MoadianPdfInvoiceGenerator {
     const payload = moadianTaxService.buildMoadianInvoicePayload(order, sellerInfo, buyerInfo);
     
     // لینک استعلام مالیاتی با کد ۲۲ رقمی مودیان
-    const verifyUrl = `https://moadian.tax.gov.ir/inquiry?tax_id=${payload.tax_id}`;
+    const verifyUrl = `https://moadian.tax.gov.ir/inquiry?tax_id=${encodeURIComponent(payload.tax_id)}`;
     const qrSvg = generateInvoiceQrSvg({
       orderId: order.id,
       code: order.code || payload.tax_id,
@@ -145,6 +145,7 @@ export class MoadianPdfInvoiceGenerator {
         <td style="width: 25%; vertical-align: top;">
           <div class="qr-container">${qrSvg}</div>
           <div style="font-size: 9px; color: #64748b; margin-top: 4px;">اسکن جهت اعتبارسنجی آنلاین</div>
+          <a href="${verifyUrl}" target="_blank" rel="noopener noreferrer" style="font-size: 9px;">مشاهده استعلام مالیاتی</a>
         </td>
         <td style="text-align: center; vertical-align: middle;">
           <h2 style="margin: 0; font-size: 17px; font-weight: 900;">صورتحساب الکترونیکی سامانه مودیان</h2>

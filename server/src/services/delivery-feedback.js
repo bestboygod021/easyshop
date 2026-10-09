@@ -1,4 +1,4 @@
-import { all, get, run } from '../db/index.js';
+import { get, run } from '../db/index.js';
 
 /**
  * سرویس نظرسنجی و امتیازدهی به خدمات ارسال، مأمور توزیع و بسته‌بندی سفارشات

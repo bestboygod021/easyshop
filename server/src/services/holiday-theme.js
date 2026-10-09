@@ -1,4 +1,4 @@
-import { all, get, run } from '../db/index.js';
+import { get, run } from '../db/index.js';
 
 /**
  * سرویس مدیریت بنرها، پوسته و پیام‌های مناسبتی زمان‌بندی‌شده تقویم خورشیدی

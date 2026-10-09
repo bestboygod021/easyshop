@@ -1,4 +1,4 @@
-import { all, get, parseJson } from '../db/index.js';
+import { all, parseJson } from '../db/index.js';
 
 /**
  * موتور مقایسه هوشمند مشخصات فنی کالاها در قالب ماتریس تعاملی

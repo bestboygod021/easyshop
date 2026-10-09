@@ -18,7 +18,7 @@ const { getCartRecommendations } = await import('../src/services/recommendation.
 const { validateIranianPostalCode, normalizeAddress } = await import('../src/services/address-normalizer.js');
 const { virtualWaitingRoom } = await import('../src/services/waiting-room.js');
 const { paymentGatewayInfo, normalizePaymentProvider } = await import('../src/services/payment-gateway.js');
-const { all, get } = await import('../src/db/index.js');
+const { all, get, run } = await import('../src/db/index.js');
 
 describe('ماژول‌های پیشرفته دور دوم بهبود مستمر', () => {
   after(() => {
@@ -26,7 +26,11 @@ describe('ماژول‌های پیشرفته دور دوم بهبود مستمر
   });
 
   it('موتور پیشنهادگر هوشمند سبد خرید (Cart Recommendations)', () => {
-    const products = all("SELECT id FROM products WHERE status = 'active' LIMIT 2");
+    // Choose a category with a guaranteed fallback candidate; demo stock is randomized and may be zero.
+    const category = get("SELECT category_id FROM products WHERE status='active' GROUP BY category_id HAVING COUNT(*) >= 3 LIMIT 1");
+    assert.ok(category, 'seed data should include a category with at least three products');
+    run("UPDATE products SET stock=MAX(stock,1) WHERE category_id=? AND status='active'", category.category_id);
+    const products = all("SELECT id FROM products WHERE status='active' AND category_id=? ORDER BY id LIMIT 2", category.category_id);
     const pIds = products.map((p) => p.id);
     const recs = getCartRecommendations(pIds, 3);
     assert.ok(Array.isArray(recs));

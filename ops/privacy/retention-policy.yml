@@ -1,0 +1,67 @@
+version: 1
+status: proposed-needs-legal-review
+owner: privacy-and-security-operations
+scheduler:
+  enabled_by_default: false
+  interval_seconds: 86400
+  apply_on_startup: true
+rules:
+  login_attempts:
+    days: 90
+    action: delete
+    contains: [email, ip, user_agent]
+  sms_otps:
+    days_after_creation: 30
+    action: delete_only_when_expired
+    contains: [phone, otp]
+  refresh_tokens:
+    days: 7
+    action: delete_only_when_revoked_or_expired
+    contains: [token_hash, ip, user_agent]
+  payment_callback_events:
+    days: 180
+    action: delete
+    contains: [provider, callback_status, authority_metadata]
+  client_telemetry_errors:
+    days: 30
+    action: delete
+    contains: [user_id, url, user_agent, error_message]
+  aggregated_client_errors:
+    days_after_last_seen: 180
+    action: delete
+    contains: [url, user_agent, stack]
+  ai_logs:
+    days: 90
+    action: delete
+    contains: [prompt, response, user_id]
+  notifications:
+    days: 180
+    action: delete
+    contains: [user_id, message_body]
+  user_login_history:
+    days: 180
+    action: delete
+    contains: [user_id, ip, user_agent]
+  expired_password_reset_tokens:
+    action: clear_immediately
+    contains: [reset_token, reset_token_hash]
+protected_from_automatic_purge:
+  - audit_logs
+  - privacy_requests
+  - orders
+  - payments
+  - wallet_transactions
+  - invoices
+  - returns_and_disputes
+  - ai_generations
+review_requirements:
+  - legal-review-per-jurisdiction
+  - tax-and-chargeback-hold
+  - backup-and-object-lock-expiry
+  - data-subject-request-fulfilment
+  - annual-owner-signoff
+notes:
+  - This is an application starting policy, not a legal retention schedule.
+  - Review exact table/data fields before enabling DATA_RETENTION_ENABLED.
+  - Keep encrypted off-site backup retention separate from online database deletion.
+  - Audit history is tamper-evident, not WORM; export to independently administered immutable storage.

@@ -4,7 +4,7 @@
 
 | محیط | نسخه |
 | --- | --- |
-| Node.js | ۲۰.۱۱ یا بالاتر (ماژول `node:sqlite` لازم است) |
+| Node.js | ۲۲.۱۳ یا بالاتر (برای `node:sqlite` بدون فلگ آزمایشی) |
 | npm | ۱۰+ |
 | (اختیاری) Android Studio + JDK 17 | برای بیلد اندروید |
 | (اختیاری) macOS + Xcode 15 | برای بیلد iOS |
@@ -19,21 +19,58 @@ git clone <repo-url> easyshop && cd easyshop
 npm ci
 npm run build                 # ساخت فرانت‌اند در web/dist
 
-# متغیرهای محیطی
-cat > server/.env <<'ENV'
+# مقادیر تصادفی مستقل بسازید؛ در استقرار واقعی از Secret Manager استفاده کنید
+umask 077
+JWT_SECRET="$(openssl rand -base64 48)"
+AI_KEY_ENCRYPTION_KEY="$(openssl rand -base64 48)"
+AUDIT_LOG_HMAC_KEY_V1="$(openssl rand -base64 48)"
+BACKUP_ENCRYPTION_KEY="$(openssl rand -base64 48)"
+cat > server/.env <<ENV
+NODE_ENV=production
 PORT=4000
 HOST=0.0.0.0
-JWT_SECRET=یک-رشته-تصادفی-حداقل-۳۲-کاراکتری
-CORS_ORIGINS=*
+JWT_SECRET=$JWT_SECRET
+AI_KEY_ENCRYPTION_KEY_VERSION=v1
+AI_KEY_ENCRYPTION_KEY=$AI_KEY_ENCRYPTION_KEY
+AUDIT_LOG_HMAC_KEY_VERSION=v1
+AUDIT_LOG_HMAC_KEY_V1=$AUDIT_LOG_HMAC_KEY_V1
+BACKUP_ENCRYPTION_ENABLED=1
+BACKUP_ENCRYPTION_KEY=$BACKUP_ENCRYPTION_KEY
+BACKUP_DIR=/mnt/easyshop-backups
+DATA_RETENTION_ENABLED=0
+CORS_ORIGINS=https://shop.example.com
+TRUSTED_ORIGINS=https://shop.example.com
+ALLOW_SELF_PROMOTION=0
+SEED_DEMO_DATA=0
 LOG_LEVEL=info
-SEED_DEMO_DATA=1
-OPENAI_API_KEY=sk-...
+OPENAI_API_KEY=
 ENV
+unset JWT_SECRET AI_KEY_ENCRYPTION_KEY AUDIT_LOG_HMAC_KEY_V1 BACKUP_ENCRYPTION_KEY
 
 npm start                     # http://<server-ip>:4000
 ```
 
 سرور هم API و هم اپ وب را از یک پورت سرو می‌کند؛ بنابراین یک دامنه کافی است.
+
+> **کلید AI:** `AI_KEY_ENCRYPTION_KEY_VERSION` و کلید نسخه‌دار را جدا از DB و خارج از Git نگه دارید؛ از آن نسخه‌ی پشتیبان امن داشته باشید و rotation را فقط با runbook رمزگشایی/رمزگذاری مجدد انجام دهید. از دست‌رفتن کلیدهای قدیمی می‌تواند provider credentials یا restore قدیمی را غیرقابل‌بازیابی کند. جزئیات: [`AI_KEY_ROTATION.md`](./AI_KEY_ROTATION.md).
+>
+> **پرداخت آنلاین:** checkout از providerهای پیاده‌سازی‌شدهٔ زرین‌پال، زیبال، آقای پرداخت و بانک ملت استفاده می‌کند؛ provider را صریحاً در `PAYMENT_PROVIDERS` allowlist کنید، secretهای پذیرنده و `PUBLIC_URL=https://...` را تنظیم کنید و callback/verify سمت سرور را ابتدا در sandbox همان provider آزمایش کنید. Mock فقط برای development/test است و production startup آن را رد می‌کند؛ اسنپ‌پی تا تکمیل adapter و verify غیرفعال است. قبل از دریافت وجه واقعی، قرارداد/آزمایش پذیرنده و مسیر reconcile دستی را با provider تأیید کنید.
+
+> **پشتیبان و بازیابی:** production برای snapshotهای AES-256-GCM به `BACKUP_ENCRYPTION_KEY` نیاز دارد. راهنمای off-site/Object Lock و restore drill در [`BACKUP_AND_RECOVERY.md`](./BACKUP_AND_RECOVERY.md) است؛ PITR پیوسته هنوز وجود ندارد و مسیر PostgreSQL در [`DATABASE_MIGRATION_AND_RECOVERY.md`](./DATABASE_MIGRATION_AND_RECOVERY.md) برنامه‌ریزی شده است.
+>
+> **Retention و audit:** سیاست حذف پیش‌فرض خاموش است؛ پس از بررسی حقوقی و تعیین دوره‌ها به [`RETENTION_AND_AUDIT.md`](./RETENTION_AND_AUDIT.md) و `DATA_RETENTION_ENABLED` توجه کنید.
+>
+> **Load/SLO:** baseline محلی و محدودیت scale افقی در [`LOAD_TESTING_AND_AUTOSCALING.md`](./LOAD_TESTING_AND_AUTOSCALING.md) مستند است.
+>
+> **Secret lifecycle:** وضعیت SecretManager، rotation و مرز KMS/Vault در [`SECRET_LIFECYCLE.md`](./SECRET_LIFECYCLE.md) آمده است.
+>
+> **Observability:** راه‌اندازی OTLP، اسکرپ محافظت‌شدهٔ Prometheus، dashboard و alert routing در [`OBSERVABILITY.md`](./OBSERVABILITY.md) توضیح داده شده است.
+
+### Blue/green و Canary
+
+تصمیم استقرار تدریجی **Kubernetes + Argo Rollouts + ingress-nginx** با تحلیل metrics توسط Prometheus Operator است. فایل‌های rollout، routing، ServiceMonitor و AnalysisTemplate در `ops/kubernetes/` و `ops/argo-rollouts/` نمونه‌اند؛ rollout عمدی `DO NOT APPLY` است. در repository اکنون Dockerfile چندمرحله‌ای و workflow ساخت/انتشار GHCR با SBOM، provenance و امضای digest تعریف شده، اما آن workflow در GitHub اجرا نشده و base/image digest واقعی تأیید نشده است. PostgreSQL schema bootstrap آمادهٔ staging است ولی import/cutover داده، cluster/controller/router، Prometheus، staging URL، Vault auth و TLS واقعی نداریم. برنامه همچنان SQLite همگام و فایل‌محلی دارد؛ چند pod ممکن است order/payment state را جدا کند، پس template را اجرا نکنید.
+
+`npm run --silent ops:preflight` فقط فایل‌ها و flagهای محلی را بررسی می‌کند و به هیچ cluster/endpoint وصل نمی‌شود. وضعیت `blocked` انتظار می‌رود و sign-off عملیاتی نیست. پس از رفع blockerها، هر pool باید روی schemaهای سازگار باشد، readiness و smoke testهای read-only را بگذراند، canary با thresholds و rollback اتوماتیک در staging تمرین شود، و RTO/RPO با evidence واقعی اندازه‌گیری شوند. طرح، آستانه‌ها و مراحل در [`ops/kubernetes/README.md`](../ops/kubernetes/README.md) و گیت‌ها/evidence در [`PRODUCTION_READINESS_REHEARSAL.md`](./PRODUCTION_READINESS_REHEARSAL.md) هستند.
 
 ### اجرای دائمی با systemd
 
@@ -118,34 +155,17 @@ tar czf /backup/easyshop-$(date +%F).tgz server/data
 
 ---
 
-## ۳) Docker
+## ۳) Docker / OCI image
 
-```dockerfile
-# Dockerfile
-FROM node:22-slim
-
-WORKDIR /app
-COPY package*.json ./
-COPY server/package.json server/
-COPY web/package.json web/
-RUN npm ci --omit=dev || npm install
-
-COPY . .
-RUN npm run build
-
-ENV PORT=4000 HOST=0.0.0.0 NODE_ENV=production
-EXPOSE 4000
-VOLUME ["/app/server/data"]
-CMD ["node", "server/src/index.js"]
-```
+Root `Dockerfile` و `.dockerignore` اکنون build چندمرحله‌ای وب/API را تعریف می‌کنند: runtime فقط dependencyهای production سرور را نصب می‌کند و با UID/GID غیرریشهٔ `10001` اجرا می‌شود. Build context دادهٔ SQLite، node_modules و فایل‌های محیطی را کنار می‌گذارد. برای بررسی محلی (sandbox فعلی Docker ندارد):
 
 ```bash
-docker build -t easyshop .
-docker run -d --name easyshop -p 4000:4000 \
-  -v easyshop-data:/app/server/data \
-  -e JWT_SECRET="یک-کلید-تصادفی" \
-  easyshop
+docker build -t easyshop-api:local .
 ```
+
+Tag محلی به‌معنی image تأییدشده نیست. GitHub workflow روی pull request فقط build می‌کند؛ فقط tag نسخه‌ای `v*` می‌تواند به GHCR publish کند، آن هم اگر repository variable `NODE_BASE_IMAGE` به image Node 22 Bookworm بازبینی‌شده و digest-pinned اشاره کند. Workflow SBOM/provenance می‌سازد و digest را امضا می‌کند؛ هنوز در GitHub اجرا نشده و staging deployment تعریف/تأیید نشده است. هیچ secretی را به build context، Dockerfile، history یا command line اضافه نکنید.
+
+این image همچنان API محلی SQLite را اجرا می‌کند؛ volume یا چند replica مشکل تقسیم وضعیت SQLite را حل نمی‌کند. برای Kubernetes rollout تا پایان PostgreSQL data import/cutover، استفاده از digest امضاشده و رفع blockerهای platform صبر کنید. جزئیات: [`SUPPLY_CHAIN.md`](./SUPPLY_CHAIN.md) و [`ops/kubernetes/README.md`](../ops/kubernetes/README.md).
 
 ---
 
@@ -224,7 +244,8 @@ cd desktop && npm run dist:all
 - [ ] تنظیمات فروشگاه (نام، تلفن، آدرس، شبکه‌های اجتماعی) ویرایش شده
 - [ ] HTTPS فعال و `/ws` پروکسی شده
 - [ ] پشتیبان‌گیری خودکار دیتابیس تنظیم شده
-- [ ] `npm test` سبز است (۴۲ تست)
+- [ ] `npm run lint`، `npm test` و `npm run build` سبز هستند
+- [ ] blockerهای `npm run --silent ops:preflight` رفع شده یا با evidence/approver ثبت شده‌اند (خروجی محلی به‌تنهایی sign-off نیست)
 
 ---
 

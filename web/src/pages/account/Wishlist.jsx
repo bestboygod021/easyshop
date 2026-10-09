@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Heart, ShoppingCart, Trash2 } from 'lucide-react';
 import { get, post } from '../../lib/api';
@@ -7,18 +7,19 @@ import { useCart, useWishlist, toast } from '../../store';
 
 export default function Wishlist() {
   const wishlist = useWishlist();
+  const loadWishlist = useWishlist((s) => s.load);
   const addToCart = useCart((s) => s.add);
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
-    await wishlist.load();
+    await loadWishlist();
     setLoading(false);
-  };
+  }, [loadWishlist]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const remove = async (id) => {
     try {

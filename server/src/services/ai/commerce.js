@@ -3,7 +3,7 @@
  * وظایف آماده: تولید محصول کامل، تصویر محصول، کمپین بازاریابی، پاسخ پشتیبانی،
  * دستیار فروشگاهی، تحلیل نظرات، پیشنهاد قیمت، دسته‌بندی و سئو.
  */
-import { all, get, uid, nowIso } from '../../db/index.js';
+import { all, get, uid } from '../../db/index.js';
 import { aiComplete, aiImage } from './gateway.js';
 import { builtinProduct, builtinText } from './builtin.js';
 import { FEATURED_MODELS } from './providers.js';

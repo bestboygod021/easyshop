@@ -15,6 +15,7 @@ const Categories = lazy(() => import('./pages/Categories'));
 const Category = lazy(() => import('./pages/Category'));
 const Cart = lazy(() => import('./pages/Cart'));
 const Checkout = lazy(() => import('./pages/Checkout'));
+const PaymentResult = lazy(() => import('./pages/PaymentResult'));
 const Login = lazy(() => import('./pages/Auth').then((m) => ({ default: m.Login })));
 const Register = lazy(() => import('./pages/Auth').then((m) => ({ default: m.Register })));
 const ForgotPassword = lazy(() => import('./pages/Auth').then((m) => ({ default: m.ForgotPassword })));
@@ -98,6 +99,7 @@ export default function App() {
             <Route path="/categories/:slug" element={<Category />} />
             <Route path="/cart" element={<Cart />} />
             <Route path="/checkout" element={<Checkout />} />
+            <Route path="/payment/result" element={<PaymentResult />} />
             <Route path="/support" element={<Support />} />
             <Route path="/about" element={<About />} />
 

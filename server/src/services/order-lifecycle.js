@@ -357,12 +357,6 @@ export function expireStaleMockPayments() {
     now, now,
   );
 
-  // پاک‌سازی خودکار و سبک رویدادهای کال‌بک قدیمی‌تر از ۱۸۰ روز (پیشنهاد ۵)
-  try {
-    const retentionCutoff = new Date(Date.now() - 180 * 24 * 60 * 60_000).toISOString();
-    run('DELETE FROM payment_callback_events WHERE created_at < ?', retentionCutoff);
-  } catch { /* نادیده گرفتن خطا جهت پایداری */ }
-
   return expired + Number(topups.changes || 0);
 }
 

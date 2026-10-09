@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Users, Search, ShieldCheck, Ban, Wallet, Mail, Phone, Pencil } from 'lucide-react';
 import { get, patch, post, qs } from '../../lib/api';
 import { number, toman, date, initials } from '../../lib/format';
@@ -11,20 +11,21 @@ export default function Customers() {
   const me = useAuth((s) => s.user);
   const [data, setData] = useState(null);
   const [q, setQ] = useState('');
+  const [searchQ, setSearchQ] = useState('');
   const [role, setRole] = useState('');
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState(null);
 
-  const load = () => {
+  const load = useCallback(() => {
     setData(null);
-    get(`/admin/users?${qs({ q, role, page, limit: 20 })}`)
+    get(`/admin/users?${qs({ q: searchQ, role, page, limit: 20 })}`)
       .then(setData)
       .catch((e) => toast(e.message, 'error'));
-  };
+  }, [searchQ, role, page]);
 
   useEffect(() => {
     load();
-  }, [role, page]);
+  }, [load]);
 
   const save = async () => {
     try {
@@ -82,7 +83,12 @@ export default function Customers() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && (setPage(1), load())}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                setPage(1);
+                setSearchQ(q);
+              }
+            }}
             placeholder="جستجوی نام، ایمیل یا شماره موبایل…"
             className="input py-2 pr-10 text-xs"
           />

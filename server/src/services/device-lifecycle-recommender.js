@@ -49,7 +49,7 @@ export class DeviceLifecycleRecommender {
     const map = this.getAccessoryKeywordMap();
     const productName = `${product.name_fa} ${product.name_en || ''}`.toLowerCase();
 
-    let searchKeywords = [];
+    let searchKeywords;
     if (productName.includes('گوشی') || productName.includes('موبایل') || productName.includes('phone')) {
       searchKeywords = map.phone;
     } else if (productName.includes('لپ‌تاپ') || productName.includes('laptop')) {

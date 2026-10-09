@@ -1,4 +1,4 @@
-import { all, get, run, nowIso, uid } from '../db/index.js';
+import { all, run, nowIso, uid } from '../db/index.js';
 
 /**
  * سیستم تحلیل کلمات ترند و رهگیری کوئری‌های پرجستجو و جستجوهای بدون نتیجه

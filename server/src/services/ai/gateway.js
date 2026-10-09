@@ -2,6 +2,7 @@ import { config } from '../../config.js';
 import { all, get, run, uid, nowIso, parseJson } from '../../db/index.js';
 import { PROVIDER_CATALOG, estimateCost, normalizeUsage } from './providers.js';
 import { builtinImage, builtinProduct, builtinText } from './builtin.js';
+import { decryptAiKey, maskAiKey } from './key-crypto.js';
 
 const TIMEOUT = config.ai.requestTimeoutMs;
 
@@ -13,7 +14,7 @@ export function toProvider(row) {
     name_en: row.name_en,
     kind: row.kind,
     baseUrl: row.base_url,
-    apiKey: row.api_key || config.ai.envKeys[row.slug] || '',
+    apiKey: row.api_key ? decryptAiKey(row.api_key) : config.ai.envKeys[row.slug] || '',
     models: parseJson(row.models, []),
     defaultModel: row.default_model || parseJson(row.models, [])[0],
     supportsImage: Boolean(row.supports_image),
@@ -31,7 +32,7 @@ export function listProviders({ includeDisabled = true } = {}) {
     .filter((r) => includeDisabled || r.enabled)
     .map((r) => ({
       ...toProvider(r),
-      api_key_masked: r.api_key ? `${String(r.api_key).slice(0, 6)}••••${String(r.api_key).slice(-4)}` : '',
+      api_key_masked: r.api_key ? maskAiKey(r.api_key) : '',
       used_tokens: r.used_tokens,
       monthly_token_cap: r.monthly_token_cap,
       notes: r.notes,

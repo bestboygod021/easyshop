@@ -1,21 +1,17 @@
 /**
  * داده‌های اولیه‌ی EasyShop (اجرای خودکار در اولین بوت یا با `npm run seed`)
  */
-import { config } from '../config.js';
 import {
-  all,
-  db,
   get,
   isSeeded,
   nowIso,
-  parseJson,
   run,
   setSetting,
   stringifyJson,
   tx,
   uid,
 } from './index.js';
-import { createUser, hashPassword } from '../middleware/auth.js';
+import { createUser } from '../middleware/auth.js';
 import { PROVIDER_CATALOG } from '../services/ai/providers.js';
 import { builtinProduct } from '../services/ai/builtin.js';
 
@@ -39,7 +35,7 @@ export function seedProviders() {
       p.name_en,
       p.kind,
       p.base_url,
-      config.ai.envKeys[p.slug] || null,
+      null, // Keep provider credentials in the secret manager/environment, never duplicate them in the database.
       stringifyJson(p.models, '[]'),
       p.default_model,
       p.supports_image,

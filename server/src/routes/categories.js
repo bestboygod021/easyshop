@@ -8,7 +8,6 @@ import { cleanText, rateLimit } from '../middleware/security.js';
 const router = express.Router();
 
 const HEX_COLOR = /^#[0-9a-fA-F]{3,8}$/;
-const MAX_DEPTH = 5;
 
 /** جلوگیری از حلقه در درخت دسته‌بندی (والد شدن خود یا فرزندان خود) */
 function wouldCycle(categoryId, newParentId) {

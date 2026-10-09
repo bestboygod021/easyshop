@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ShoppingBag, Search, Truck, Download, Printer } from 'lucide-react';
 import { api, get, patch, qs } from '../../lib/api';
@@ -10,20 +10,21 @@ export default function AdminOrders() {
   const [data, setData] = useState(null);
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
+  const [searchQ, setSearchQ] = useState('');
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState({ status: '', tracking_code: '', shipping_carrier: '', admin_note: '' });
 
-  const load = () => {
+  const load = useCallback(() => {
     setData(null);
-    get(`/admin/orders?${qs({ status, q, page, limit: 20 })}`)
+    get(`/admin/orders?${qs({ status, q: searchQ, page, limit: 20 })}`)
       .then(setData)
       .catch((e) => toast(e.message, 'error'));
-  };
+  }, [status, searchQ, page]);
 
   useEffect(() => {
     load();
-  }, [status, page]);
+  }, [load]);
 
   const openOrder = (o) => {
     setSelected(o);
@@ -85,7 +86,12 @@ export default function AdminOrders() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && (setPage(1), load())}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                setPage(1);
+                setSearchQ(q);
+              }
+            }}
             placeholder="جستجو بر اساس کد سفارش، نام یا ایمیل مشتری…"
             className="input py-2 pr-10 text-xs"
           />

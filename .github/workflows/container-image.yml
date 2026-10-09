@@ -1,0 +1,90 @@
+name: API container image
+
+on:
+  pull_request:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  container:
+    name: Build, scan metadata, and publish immutable API image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Derive OCI tags and labels
+        id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=ref,event=tag
+            type=sha,format=long
+      - name: Require a digest-pinned Node base for release publication
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          NODE_BASE_IMAGE: ${{ vars.NODE_BASE_IMAGE }}
+        run: |
+          if [[ ! "$NODE_BASE_IMAGE" =~ ^node:22\.[0-9]+\.[0-9]+-bookworm-slim@sha256:[a-f0-9]{64}$ ]]; then
+            echo "Set the reviewed NODE_BASE_IMAGE repository variable to a Node 22 Bookworm image pinned by sha256 digest." >&2
+            exit 1
+          fi
+      - name: Authenticate to GitHub Container Registry for tagged releases
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and attach SBOM/provenance metadata
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          build-args: |
+            NODE_BASE_IMAGE=${{ vars.NODE_BASE_IMAGE || 'node:22.22.3-bookworm-slim' }}
+          push: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Install cosign
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: sigstore/cosign-installer@v3
+      - name: Sign published image digest with GitHub OIDC
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${IMAGE_DIGEST}"
+      - name: Attest image build provenance
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Report build result
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          echo "Build completed for \`${IMAGE}\`." >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "Published digest: \`${IMAGE_DIGEST}\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Pull request validation only; no image was published. Candidate digest: \`${IMAGE_DIGEST:-not-reported}\`." >> "$GITHUB_STEP_SUMMARY"
+          fi

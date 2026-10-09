@@ -16,8 +16,11 @@ process.env.UPLOAD_DIR = path.join(TMP, 'uploads');
 process.env.SEED_DEMO_DATA = '1';
 process.env.NODE_ENV = 'test';
 process.env.LOG_LEVEL = 'error';
+process.env.AI_KEY_ENCRYPTION_KEY = 'easyshop-test-key-material-that-is-over-thirty-two-bytes';
 
 const { app, bootstrap } = await import('../src/index.js');
+const { get: dbGet } = await import('../src/db/index.js');
+const { config } = await import('../src/config.js');
 bootstrap(); // آماده‌سازی ارائه‌دهنده‌های AI و داده‌های دمو در پوشه‌ی موقت
 
 let server;
@@ -51,7 +54,7 @@ async function call(method, url, { token, body, headers = {}, session } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
-  let json = null;
+  let json;
   try {
     json = JSON.parse(text);
   } catch {
@@ -63,6 +66,7 @@ async function call(method, url, { token, body, headers = {}, session } = {}) {
 const get = (u, o) => call('GET', u, o);
 const post = (u, b, o) => call('POST', u, { ...o, body: b });
 const patch = (u, b, o) => call('PATCH', u, { ...o, body: b });
+const put = (u, b, o) => call('PUT', u, { ...o, body: b });
 
 let adminToken = '';
 let userToken = '';
@@ -75,6 +79,24 @@ describe('سلامت و کشف سرویس', () => {
     assert.equal(status, 200);
     assert.equal(body.status, 'ok');
     assert.ok(body.counts.products > 0, 'داده‌های دمو باید بارگذاری شده باشد');
+  });
+
+  it('endpoint متریک‌ها با Bearer token محافظت می‌شود و Prometheus exposition می‌دهد', async () => {
+    const previous = config.observability.metricsBearerToken;
+    config.observability.metricsBearerToken = 'metrics-test-secret';
+    try {
+      const denied = await fetch(`${base}/metrics`);
+      assert.equal(denied.status, 401);
+      const allowed = await fetch(`${base}/metrics`, { headers: { authorization: 'Bearer metrics-test-secret' } });
+      assert.equal(allowed.status, 200);
+      assert.match(allowed.headers.get('content-type'), /text\/plain/);
+      const text = await allowed.text();
+      assert.match(text, /easyshop_http_requests_total/);
+      assert.match(text, /easyshop_http_request_duration_ms_bucket/);
+      assert.match(text, /path="\/api\/health"/);
+    } finally {
+      config.observability.metricsBearerToken = previous;
+    }
   });
 
   it('GET /api/home بخش‌های صفحه اصلی را برمی‌گرداند', async () => {
@@ -119,6 +141,12 @@ describe('احراز هویت', () => {
     const { status, body } = await get('/api/auth/me', { token: userToken });
     assert.equal(status, 200);
     assert.equal(body.user.id, user.id);
+  });
+
+  it('به‌روزرسانی پروفایل از متد PATCH پشتیبانی می‌شود', async () => {
+    const { status, body } = await patch('/api/auth/me', { locale: 'en' }, { token: userToken });
+    assert.equal(status, 200);
+    assert.equal(body.user.locale, 'en');
   });
 
   it('مسیر محافظت‌شده بدون توکن ۴۰۱ می‌دهد', async () => {
@@ -238,23 +266,158 @@ describe('سبد خرید و سفارش', () => {
     assert.ok(body.stats.orders >= 1);
     assert.ok(body.recent_orders.some((o) => o.id === order.id));
   });
+
+  it('checkout آزمایشی در production رد می‌شود و سبد را نگه می‌دارد', async () => {
+    const { body: list } = await get('/api/products?sort=expensive&limit=10');
+    const product = list.items.find((item) => item.stock > 0);
+    const add = await post('/api/cart/items', { product_id: product.id, qty: 1 }, { token: userToken });
+    assert.equal(add.status, 201);
+
+    const previous = config.isProd;
+    config.isProd = true;
+    let checkout;
+    try {
+      checkout = await post('/api/orders/checkout', {
+        address: { receiver: 'کاربر تست', phone: '09121112233', province: 'تهران', city: 'تهران', line: 'خیابان تست', postal_code: '1234567890' },
+        shipping_method: 'post', payment_method: 'gateway',
+      }, { token: userToken });
+    } finally {
+      config.isProd = previous;
+    }
+    assert.equal(checkout.status, 503);
+    const cart = await get('/api/cart', { token: userToken });
+    assert.ok(cart.body.items.some((item) => item.product_id === product.id));
+  });
+});
+
+describe('رزرو موجودی واریانت در checkout و لغو', () => {
+  it('شناسه واریانت سفارش ذخیره می‌شود و لغو فقط موجودی همان واریانت را برمی‌گرداند', async () => {
+    const productCreate = await post('/api/products', {
+      name: 'کالای واریانت تست تراکنش',
+      slug: `variant-reserve-${Date.now()}`,
+      price: 100_000,
+      stock: 50,
+      status: 'active',
+      variants: [{ name_fa: 'رنگ آبی', stock: 3, price_delta: 5_000 }],
+    }, { token: adminToken });
+    assert.equal(productCreate.status, 201);
+    const productId = productCreate.body.product.id;
+    const detailBefore = await get(`/api/products/${productId}`);
+    const variant = detailBefore.body.variants[0];
+    const productStockBefore = detailBefore.body.product.stock;
+    const variantStockBefore = variant.stock;
+    assert.equal(variantStockBefore, 3);
+
+    const email = `variant_${Date.now()}@easyshop.ir`;
+    const register = await post('/api/auth/register', {
+      email, password: 'Variant#Pass2026', full_name: 'کاربر واریانت', phone: '09123334444',
+    });
+    assert.equal(register.status, 201);
+    const token = register.body.session.accessToken;
+    const cartAdd = await post('/api/cart/items', { product_id: productId, variant_id: variant.id, qty: 2 }, { token });
+    assert.equal(cartAdd.status, 201);
+
+    const checkout = await post('/api/orders/checkout', {
+      address: { receiver: 'کاربر واریانت', phone: '09123334444', province: 'تهران', city: 'تهران', line: 'خیابان تست', postal_code: '1234567890' },
+      shipping_method: 'post', payment_method: 'gateway',
+    }, { token });
+    assert.equal(checkout.status, 201);
+    const order = checkout.body.order;
+    assert.equal(order.items[0].variant_id, variant.id);
+
+    const detailReserved = await get(`/api/products/${productId}`);
+    assert.equal(detailReserved.body.variants[0].stock, variantStockBefore - 2);
+    assert.equal(detailReserved.body.product.stock, productStockBefore, 'رزرو واریانت نباید stock محصول مادر را تغییر دهد');
+
+    const cancelled = await post(`/api/orders/${order.id}/cancel`, { reason: 'آزمون آزادسازی واریانت' }, { token });
+    assert.equal(cancelled.status, 200);
+    const detailRestored = await get(`/api/products/${productId}`);
+    assert.equal(detailRestored.body.variants[0].stock, variantStockBefore);
+    assert.equal(detailRestored.body.product.stock, productStockBefore);
+
+    const secondAdd = await post('/api/cart/items', { product_id: productId, variant_id: variant.id, qty: 2 }, { token });
+    assert.equal(secondAdd.status, 201);
+    const secondCheckout = await post('/api/orders/checkout', {
+      address: { receiver: 'کاربر واریانت', phone: '09123334444', province: 'تهران', city: 'تهران', line: 'خیابان تست', postal_code: '1234567890' },
+      shipping_method: 'post', payment_method: 'gateway',
+    }, { token });
+    assert.equal(secondCheckout.status, 201);
+    const paid = await post(`/api/orders/${secondCheckout.body.order.id}/pay`, {
+      success: true,
+      authority: secondCheckout.body.payment.authority,
+      intent_token: secondCheckout.body.payment.intent_token,
+    }, { token });
+    assert.equal(paid.status, 200);
+    const { run: dbRun } = await import('../src/db/index.js');
+    dbRun("UPDATE orders SET status='delivered', delivered_at=? WHERE id=?", new Date().toISOString(), secondCheckout.body.order.id);
+
+    const returned = await post(`/api/orders/${secondCheckout.body.order.id}/return`, { reason: 'آزمون مرجوعی واریانت' }, { token });
+    assert.equal(returned.status, 200);
+    const afterReturn = await get(`/api/products/${productId}`);
+    assert.equal(afterReturn.body.variants[0].stock, variantStockBefore);
+    assert.equal(afterReturn.body.product.stock, productStockBefore);
+  });
 });
 
 describe('کد تخفیف و کیف پول', () => {
   it('کد WELCOME10 اعمال می‌شود', async () => {
-    const { body: list } = await get('/api/products?limit=1');
-    const p = list.items.find((x) => x.stock > 1) || list.items[0];
+    const { body: list } = await get('/api/products?sort=expensive&limit=100');
+    const p = list.items.find((x) => x.stock > 1 && x.price >= 500_000) || list.items.find((x) => x.stock > 1) || list.items[0];
     await post('/api/cart/items', { product_id: p.id, qty: 1 }, { token: userToken });
     const { status, body } = await post('/api/cart/coupon', { code: 'WELCOME10' }, { token: userToken });
-    assert.equal(status, 200);
+    assert.equal(status, 200, JSON.stringify(body));
     assert.equal(body.coupon_code, 'WELCOME10');
     assert.ok(body.totals.discount > 0);
+  });
+
+  it('رزرو کوپن و امتیاز وفاداری با لغو سفارش به‌طور اتمی آزاد می‌شوند', async () => {
+    const { run: dbRun } = await import('../src/db/index.js');
+    const couponBefore = dbGet('SELECT used_count FROM coupons WHERE code = ?', 'WELCOME10').used_count;
+    dbRun('UPDATE users SET loyalty_points = 5 WHERE id = ?', user.id);
+
+    const checkout = await post('/api/orders/checkout', {
+      address: { receiver: 'سارا تستی', phone: '09121112233', province: 'تهران', city: 'تهران', line: 'خیابان آزادی', postal_code: '1234567890' },
+      shipping_method: 'post', payment_method: 'gateway', use_loyalty: 2,
+    }, { token: userToken });
+    assert.equal(checkout.status, 201, JSON.stringify(checkout.body));
+    const orderId = checkout.body.order.id;
+    assert.equal(dbGet('SELECT loyalty_points FROM users WHERE id = ?', user.id).loyalty_points, 3);
+    assert.equal(dbGet('SELECT used_count FROM coupons WHERE code = ?', 'WELCOME10').used_count, couponBefore + 1);
+    assert.equal(dbGet('SELECT COUNT(*) c FROM coupon_redemptions WHERE order_id = ?', orderId).c, 1);
+    assert.equal(dbGet('SELECT loyalty_reserved FROM orders WHERE id = ?', orderId).loyalty_reserved, 1);
+    assert.equal(dbGet('SELECT coupon_reserved FROM orders WHERE id = ?', orderId).coupon_reserved, 1);
+
+    const cancelled = await post(`/api/orders/${orderId}/cancel`, { reason: 'بررسی آزادسازی رزرو' }, { token: userToken });
+    assert.equal(cancelled.status, 200);
+    assert.equal(dbGet('SELECT loyalty_points FROM users WHERE id = ?', user.id).loyalty_points, 5);
+    assert.equal(dbGet('SELECT used_count FROM coupons WHERE code = ?', 'WELCOME10').used_count, couponBefore);
+    assert.equal(dbGet('SELECT COUNT(*) c FROM coupon_redemptions WHERE order_id = ?', orderId).c, 0);
   });
 
   it('کد نامعتبر رد می‌شود', async () => {
     const { status, body } = await post('/api/cart/coupon', { code: 'NOT-A-CODE' }, { token: userToken });
     assert.ok(status >= 400 && status < 500, `کد نامعتبر باید رد شود (دریافتی: ${status})`);
     assert.equal(body.ok, false);
+  });
+
+  it('پرداخت کیف پول ناکافی، سفارش/رزرو را rollback می‌کند و سبد را نگه می‌دارد', async () => {
+    const { run: dbRun } = await import('../src/db/index.js');
+    dbRun('UPDATE users SET wallet = 0 WHERE id = ?', user.id);
+    const { body: list } = await get('/api/products?sort=expensive&limit=20');
+    const product = list.items.find((item) => item.stock > 0);
+    const stockBefore = dbGet('SELECT stock FROM products WHERE id = ?', product.id).stock;
+    const ordersBefore = dbGet('SELECT COUNT(*) c FROM orders WHERE user_id = ?', user.id).c;
+    await post('/api/cart/items', { product_id: product.id, qty: 1 }, { token: userToken });
+
+    const checkout = await post('/api/orders/checkout', {
+      address: { receiver: 'سارا تستی', phone: '09121112233', province: 'تهران', city: 'تهران', line: 'خیابان آزادی', postal_code: '1234567890' },
+      shipping_method: 'post', payment_method: 'wallet',
+    }, { token: userToken });
+    assert.equal(checkout.status, 409);
+    assert.equal(dbGet('SELECT COUNT(*) c FROM orders WHERE user_id = ?', user.id).c, ordersBefore);
+    assert.equal(dbGet('SELECT stock FROM products WHERE id = ?', product.id).stock, stockBefore);
+    const cart = await get('/api/cart', { token: userToken });
+    assert.ok(cart.body.items.some((item) => item.product_id === product.id));
   });
 
   it('شارژ کیف پول و برداشت امتیاز وفاداری', async () => {
@@ -327,6 +490,31 @@ describe('هوش مصنوعی چندمدلی', () => {
       assert.ok(slugs.includes(slug), `مدل ${slug} باید در کاتالوگ باشد`);
     }
     assert.equal(body.featured.length, 5);
+  });
+
+  it('کلید ارائه‌دهندهٔ AI رمز‌شده ذخیره می‌شود و تنظیمات عمومی راز نمی‌پذیرند', async () => {
+    const secret = 'sk-easyshop-integration-test-secret';
+    const saved = await put('/api/ai/providers/openai', { api_key: secret }, { token: adminToken });
+    assert.equal(saved.status, 200);
+    assert.equal(JSON.stringify(saved.body).includes(secret), false);
+    const provider = saved.body.providers.find((item) => item.slug === 'openai');
+    assert.ok(provider.api_key_masked);
+    assert.equal(provider.api_key_masked.includes(secret), false);
+
+    const stored = dbGet('SELECT api_key FROM ai_providers WHERE slug = ?', 'openai').api_key;
+    assert.match(stored, /^enc:v2:v1:/);
+    assert.notEqual(stored, secret);
+
+    const unsafeSettings = await put('/api/ai/settings', { api_key: 'must-not-be-stored' }, { token: adminToken });
+    assert.equal(unsafeSettings.status, 400);
+    const home = await get('/api/home');
+    assert.equal(JSON.stringify(home.body.settings.ai).includes(secret), false);
+    assert.equal(JSON.stringify(home.body.settings.ai).includes('must-not-be-stored'), false);
+
+    const adminSettings = await put('/api/admin/settings', { ai: { api_key: 'also-must-not-leak', default_provider: 'builtin' } }, { token: adminToken });
+    assert.equal(adminSettings.status, 200);
+    assert.equal(JSON.stringify(adminSettings.body).includes('also-must-not-leak'), false);
+    assert.deepEqual(adminSettings.body.settings.ai, { default_provider: 'builtin' });
   });
 
   it('موتور داخلی بدون کلید API محصول تولید می‌کند', async () => {
@@ -407,6 +595,16 @@ describe('پنل مدیریت', () => {
     const { status, body } = await patch(`/api/admin/orders/${order.id}`, { status: 'shipped', tracking_code: 'TEST-123' }, { token: adminToken });
     assert.equal(status, 200);
     assert.equal(body.order.status, 'shipped');
+  });
+
+  it('مدیر فقط به snapshot محدود SLO و تاریخچه هشدارها دسترسی دارد', async () => {
+    const response = await get('/api/admin/observability', { token: adminToken });
+    assert.equal(response.status, 200);
+    assert.ok(response.body.slo);
+    assert.ok(Array.isArray(response.body.active_alerts));
+    assert.ok(Array.isArray(response.body.recent_alerts));
+    const forbidden = await get('/api/admin/observability', { token: userToken });
+    assert.equal(forbidden.status, 403);
   });
 
   it('مدیر می‌تواند کد تخفیف بسازد', async () => {

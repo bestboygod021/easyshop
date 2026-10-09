@@ -11,12 +11,13 @@ import {
   publicUser,
   requireAuth,
   rotateRefreshToken,
+  signAccessToken,
   verifyPassword,
   hashPassword,
 } from '../middleware/auth.js';
 import { asyncHandler, fail, ok } from '../utils/helpers.js';
 import {
-  checkPasswordPolicy, cleanText, clearLoginFailures, clientIp, hashToken,
+  checkPasswordPolicy, cleanText, clearLoginFailures, hashToken,
   logLoginAttempt, loginThrottle, rateLimit, recordLoginFailure, revokeAllSessionsSafe,
 } from '../middleware/security.js';
 
@@ -85,8 +86,15 @@ router.post(
     if (!refreshToken) return fail(res, 'refreshToken لازم است.');
     const result = rotateRefreshToken(refreshToken);
     if (!result) return fail(res, 'نشست منقضی شده است. دوباره وارد شوید.', 401);
-    const { user, ...tokens } = result;
-    return ok(res, { session: { accessToken: tokens.token, refreshToken: tokens.token, refreshExpiresAt: tokens.expires, user: publicUser(user) } });
+    const { user, token, expires } = result;
+    return ok(res, {
+      session: {
+        accessToken: signAccessToken(user),
+        refreshToken: token,
+        refreshExpiresAt: expires,
+        user: publicUser(user),
+      },
+    });
   }),
 );
 

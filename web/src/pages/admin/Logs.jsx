@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ScrollText, Search, Filter, ShieldAlert } from 'lucide-react';
 import { get, qs } from '../../lib/api';
 import { date, number } from '../../lib/format';
@@ -12,16 +12,16 @@ export default function Logs() {
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
 
-  const load = () => {
+  const load = useCallback(() => {
     setData(null);
     get(`/admin/audit-logs?${qs({ page, limit: 50 })}`)
       .then(setData)
       .catch((e) => toast(e.message, 'error'));
-  };
+  }, [page]);
 
   useEffect(() => {
     load();
-  }, [page]);
+  }, [load]);
 
   if (me && me.role !== 'admin') {
     return (

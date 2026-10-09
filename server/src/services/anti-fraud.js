@@ -1,18 +1,17 @@
-import { all, get, nowIso } from '../db/index.js';
+import { get } from '../db/index.js';
 
 /**
  * Anti-Fraud Velocity Engine.
  * Evaluates payment attempt patterns:
  * - Repeated failed attempts in the last 15 minutes (Velocity)
- * - Multiple distinct card numbers used by the same user or IP
+ * - Multiple distinct card numbers used by the same user
  * - High-risk order amount spikes
  * @param {object} param0
  * @param {string} param0.userId
- * @param {string} param0.ip
  * @param {number} param0.amount
  * @returns {{ is_suspicious: boolean, risk_score: number, reasons: string[] }}
  */
-export function evaluateTransactionRisk({ userId, ip, amount = 0 }) {
+export function evaluateTransactionRisk({ userId, amount = 0 }) {
   const reasons = [];
   let riskScore = 0; // 0 to 100
 

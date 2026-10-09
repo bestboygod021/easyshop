@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Tests, build, and dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:ops-preflight
+      - run: npm run test:container-image
+      - run: npm run test:postgres-staging
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --audit-level=high
+
+  postgres-integration:
+    name: PostgreSQL schema, transaction, and backfill integration
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: easyshop_ci
+          POSTGRES_USER: easyshop_ci
+          POSTGRES_HOST_AUTH_METHOD: trust # ephemeral CI service only; never reuse for staging/production
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U easyshop_ci -d easyshop_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Run against the isolated PostgreSQL service (not staging/production)
+        env:
+          NODE_ENV: test
+          PG_INTEGRATION_DATABASE_URL: postgresql://easyshop_ci@127.0.0.1:5432/easyshop_ci?sslmode=disable
+        run: node --test server/test/postgres-server-integration.test.js
+
+  e2e:
+    name: Browser end-to-end smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+  supply-chain:
+    name: Secret scan, dependency review, and SBOMs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix desktop
+      - run: npm ci --prefix mobile
+      - run: npm run supplychain:audit
+      - run: npm run test:supply-chain
+      - run: npm run test:mobile-tooling
+      - name: Scan repository history for leaked credentials
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_SUMMARY: true
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+      - run: npm run sbom
+      - run: npm run sbom:desktop
+      - run: npm run sbom:mobile
+      - uses: actions/upload-artifact@v4
+        with:
+          name: easyshop-supply-chain-reports
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 90
+
+  dependency-review:
+    name: Review pull request dependencies
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: always
+
+  desktop:
+    name: Electron runtime and package smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix desktop
+      - run: npm audit --prefix desktop --audit-level=high
+      - run: npm run build
+      - run: npm run desktop:runtime
+      - run: npm --prefix desktop run pack

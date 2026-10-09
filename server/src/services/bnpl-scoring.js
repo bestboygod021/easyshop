@@ -1,4 +1,4 @@
-import { get, all } from '../db/index.js';
+import { get } from '../db/index.js';
 
 /**
  * سرویس امتیازدهی اعتباری و سنجش شایستگی خرید اقساطی (BNPL & Credit Scoring Engine)

@@ -1,4 +1,4 @@
-import { get, all, run } from '../db/index.js';
+import { get, run } from '../db/index.js';
 
 /**
  * ماژول پایش تاخیر ارسال و تخصیص خودکار کد تخفیف عذرخواهی (Delivery SLA Tracker)

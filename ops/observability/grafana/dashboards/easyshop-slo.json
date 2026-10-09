@@ -1,0 +1,91 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "HTTP SLO, latency, payment verification, and process health for EasyShop. Metrics are sourced from the authenticated Prometheus scrape.",
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "easyshop-prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "decimals": 2, "max": 1, "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0.999 }] }, "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "easyshop-prometheus" }, "editorMode": "code", "expr": "(1 - sum(rate(easyshop_http_requests_total{job=\"easyshop-api\",status=~\"5..\",path!=\"/metrics\",path!=\"/api/health\"}[5m])) / clamp_min(sum(rate(easyshop_http_requests_total{job=\"easyshop-api\",path!=\"/metrics\",path!=\"/api/health\"}[5m])), 0.001)) and on() (sum(increase(easyshop_http_requests_total{job=\"easyshop-api\",path!=\"/metrics\",path!=\"/api/health\"}[5m])) >= 20)", "legendFormat": "availability", "range": true, "refId": "A" }],
+      "title": "HTTP availability · 5m (minimum 20 requests)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "easyshop-prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": false }, "min": 0, "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "easyshop-prometheus" }, "editorMode": "code", "expr": "sum by (status) (rate(easyshop_http_requests_total{job=\"easyshop-api\",path!=\"/metrics\",path!=\"/api/health\"}[$__rate_interval]))", "legendFormat": "HTTP {{status}}", "range": true, "refId": "A" }],
+      "title": "HTTP request rate by status",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "easyshop-prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never", "spanNulls": false }, "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 750 }, { "color": "red", "value": 1500 }] }, "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 3,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": false }, "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "easyshop-prometheus" }, "editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(easyshop_http_request_duration_ms_bucket{job=\"easyshop-api\",path!=\"/metrics\",path!=\"/api/health\"}[5m])))", "legendFormat": "p95", "range": true, "refId": "A" }],
+      "title": "HTTP request latency · p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "easyshop-prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "decimals": 2, "max": 1, "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "orange", "value": 0.98 }, { "color": "green", "value": 0.99 }] }, "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 4,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "showPercentChange": false, "textMode": "auto" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "easyshop-prometheus" }, "editorMode": "code", "expr": "(sum(increase(easyshop_payment_attempts_total{job=\"easyshop-api\",status=\"verified_paid\"}[10m])) / clamp_min(sum(increase(easyshop_payment_attempts_total{job=\"easyshop-api\",status=~\"verified_paid|verification_error|settlement_pending|manual_review\"}[10m])), 1)) and on() (sum(increase(easyshop_payment_attempts_total{job=\"easyshop-api\",status=~\"verified_paid|verification_error|settlement_pending|manual_review\"}[10m])) >= 10)", "legendFormat": "verified payment success", "range": true, "refId": "A" }],
+      "title": "Server-side payment verification · 10m (minimum 10)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "easyshop-prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "bars", "fillOpacity": 65, "lineWidth": 1, "showPoints": "never" }, "min": 0, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 5,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "easyshop-prometheus" }, "editorMode": "code", "expr": "sum by (status) (increase(easyshop_payment_attempts_total{job=\"easyshop-api\",status=~\"verification_error|settlement_pending|manual_review|init_failed\"}[5m]))", "legendFormat": "{{status}}", "range": true, "refId": "A" }],
+      "title": "Payment exceptions and manual reviews · 5m",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "easyshop-prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "showPoints": "never" }, "min": 0, "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 6,
+      "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": false }, "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "easyshop-prometheus" }, "editorMode": "code", "expr": "process_resident_memory_bytes{job=\"easyshop-api\"}", "legendFormat": "process RSS", "range": true, "refId": "A" }],
+      "title": "API process resident memory",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["easyshop", "slo", "payments"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "EasyShop · SLO and Payments",
+  "uid": "easyshop-slo-payments",
+  "version": 1
+}

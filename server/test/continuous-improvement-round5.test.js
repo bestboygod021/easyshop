@@ -19,7 +19,7 @@ const { calculateVendorPayouts } = await import('../src/services/vendor-payout.j
 const { buildProductJsonLd } = await import('../src/services/schema-ld.js');
 const { validateFirstTimeBuyerEligibility } = await import('../src/services/first-time-buyer.js');
 const { generatePasskeyRegistrationOptions, registerPasskeyCredential, getUserPasskeys } = await import('../src/services/passkeys.js');
-const { all, get } = await import('../src/db/index.js');
+const { all, get, run } = await import('../src/db/index.js');
 
 describe('ماژول‌های پیشرفته دور پنجم بهبود مستمر', () => {
   after(() => {
@@ -52,6 +52,23 @@ describe('ماژول‌های پیشرفته دور پنجم بهبود مستم
   it('محافظت از تخفیف‌های اولین خرید (First-Time Buyer Safeguard)', () => {
     const eligible = validateFirstTimeBuyerEligibility({ userId: 'new_unique_user_999' });
     assert.equal(eligible.eligible, true);
+
+    const addressLine = '551 New Applicant Parkway Apt 204';
+    const orderId = `first-buyer-address-${Date.now()}`;
+    run(
+      `INSERT INTO orders (id,code,status,payment_status,subtotal,discount,tax,shipping_cost,total,address,placed_at,updated_at)
+       VALUES (?,?,?, ?,0,0,0,0,0,?,?,?)`,
+      orderId,
+      `FIRST-${Date.now()}`,
+      'delivered',
+      'paid',
+      JSON.stringify({ line: addressLine }),
+      new Date().toISOString(),
+      new Date().toISOString(),
+    );
+    const addressRepeat = validateFirstTimeBuyerEligibility({ addressLine });
+    assert.equal(addressRepeat.eligible, false);
+    assert.match(addressRepeat.reason, /نشانی/);
   });
 
   it('تولید و ثبت اعتبارنامه‌های WebAuthn / Passkeys', () => {

@@ -15,6 +15,20 @@ export function validateFirstTimeBuyerEligibility({ userId, phone, addressLine }
     }
   }
 
+  if (addressLine) {
+    const normalizedAddress = String(addressLine).trim().replace(/\s+/g, ' ').slice(0, 120);
+    if (normalizedAddress.length >= 8) {
+      const existingAddressOrder = get(
+        `SELECT COUNT(*) c FROM orders
+         WHERE payment_status = 'paid' AND lower(address) LIKE lower(?)`,
+        `%${normalizedAddress}%`,
+      )?.c || 0;
+      if (existingAddressOrder > 0) {
+        return { eligible: false, reason: 'با این نشانی پیش از این سفارش موفقی ثبت شده است.' };
+      }
+    }
+  }
+
   if (phone) {
     const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
     const existingPhoneOrder = get(

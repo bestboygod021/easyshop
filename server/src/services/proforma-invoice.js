@@ -1,4 +1,4 @@
-import { all, get, run } from '../db/index.js';
+import { get, run } from '../db/index.js';
 
 /**
  * سرویس صدور پیش‌فاکتور (Proforma Invoice) و تبدیل آن به سفارش قطعی

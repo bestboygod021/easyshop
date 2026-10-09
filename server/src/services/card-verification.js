@@ -1,5 +1,3 @@
-import { get } from '../db/index.js';
-
 /**
  * سرویس تطابق کارت مبدا و واریزکننده طبق دستورالعمل‌های ضد پولشویی شاپرک
  */
@@ -22,12 +20,7 @@ export class CardVerificationService {
       return { matched: false, reason: 'missing_info', message_fa: 'شماره کارت پرداخت‌کننده نامشخص است.' };
     }
 
-    if (userId) {
-      const user = get(`SELECT id, national_id, sheba_number FROM users WHERE id = ?`, userId);
-      // ادامه بررسی اختیاری کاربر
-    }
-
-    // اگر کاربر شماره کارت ثبت نکرده باشد، تطبیق به صورت نرم انجام می‌گیرد
+    // شماره کارت ثبت‌شده‌ای برای مقایسه در پروفایل ذخیره نمی‌شود؛ نتیجه صرفاً نرم است.
     const cleanPaidMask = String(paidCardMask).replace(/[^\d*]/g, '');
 
     return {

@@ -1,4 +1,4 @@
-import { all, get, nowIso, run, uid } from '../db/index.js';
+import { get, nowIso, run, uid } from '../db/index.js';
 import { smsOtpService } from './sms-otp.js';
 
 /**

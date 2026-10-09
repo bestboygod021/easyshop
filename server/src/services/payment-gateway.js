@@ -12,7 +12,6 @@ const MRPARDAKHT_START = 'https://panel.aqayepardakht.ir/startpay';
 const MELLAT_API = 'https://bpm.shaparak.ir/pgwchannel/services/pgw?wsdl';
 const MELLAT_START = 'https://bpm.shaparak.ir/pgwchannel/startpay.mellat';
 const MELLAT_SOAP_NS = 'http://interfaces.core.sw.bps.com/';
-const SNAPPAY_API = 'https://api.snapppay.ir/v1';
 const PAYMENT_PROVIDERS = new Set(['mock', 'zarinpal', 'zibal', 'mrpardakht', 'bank_direct', 'snapppay']);
 const PROVIDER_ALIASES = new Map([
   ['mr-pardakht', 'mrpardakht'],
@@ -121,14 +120,12 @@ export function paymentGatewayInfo(requestedProvider) {
     };
   }
   if (provider === 'snapppay') {
-    const configured = Boolean(config.payment.snapppayClientId && config.payment.snapppayClientSecret);
-    const enabled = allowlisted(provider) && configured;
     return {
       provider,
       label: 'پرداخت اقساطی اسنپ‌پی (BNPL)',
-      enabled,
+      enabled: false,
       sandbox: Boolean(config.payment.snapppaySandbox),
-      reason: enabled ? null : 'کلیدهای اتصال اسنپ‌پی تنظیم نشده یا در allowlist فعال نیست.',
+      reason: 'اتصال و تأیید نهایی اسنپ‌پی هنوز پیاده‌سازی نشده است.',
     };
   }
   return {
@@ -493,7 +490,7 @@ async function createMrPardakhtPayment({ amount, description, metadata, req }) {
   };
 }
 
-async function createBankDirectMellatPayment({ amount, description, metadata, req }) {
+async function createBankDirectMellatPayment({ amount, metadata, req }) {
   const terminalId = config.payment.bankDirectMellatTerminalId;
   const username = config.payment.bankDirectMellatUsername;
   const password = config.payment.bankDirectMellatPassword;
@@ -628,7 +625,7 @@ export async function verifyGatewayPayment({ provider: requestedProvider, author
     });
     const code = Number(response?.data?.code);
     const verifiedAmount = response?.data?.amount;
-    const amountMatches = verifiedAmount === undefined || Number(verifiedAmount) === rialAmount;
+    const amountMatches = verifiedAmount !== undefined && Number(verifiedAmount) === rialAmount;
     if ([100, 101].includes(code) && amountMatches) {
       const ref = response?.data?.ref_id;
       return { success: true, ref_id: ref === undefined || ref === null ? null : String(ref).slice(0, 80) };
@@ -641,7 +638,7 @@ export async function verifyGatewayPayment({ provider: requestedProvider, author
     const rialAmount = gatewayAmount(amount);
     const response = await gatewayJson(`${ZIBAL_API}/verify`, { merchant, trackId: String(authority || '') });
     const amountMatches = Number(response?.amount) === rialAmount;
-    const orderMatches = orderId === undefined || response?.orderId === undefined || String(response.orderId) === String(orderId);
+    const orderMatches = orderId === undefined || String(response?.orderId ?? '') === String(orderId);
     if (Number(response?.result) === 100 && Number(response?.status) === 1 && amountMatches && orderMatches) {
       const ref = response?.refNumber ?? response?.ref_number ?? response?.cardNumber;
       return { success: true, ref_id: ref === undefined || ref === null ? null : String(ref).slice(0, 80) };

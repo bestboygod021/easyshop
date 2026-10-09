@@ -1,4 +1,4 @@
-import { all, get, run } from '../db/index.js';
+import { all, run } from '../db/index.js';
 
 /**
  * سرویس شاخص رضایت و وفاداری خالص مشتریان (Net Promoter Score - NPS Engine)

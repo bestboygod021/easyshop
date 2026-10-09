@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, Filter, Pencil, Trash2, Sparkles, Boxes, BadgeCheck, Eye, TrendingDown, Wand2,
@@ -18,21 +18,26 @@ export default function AdminProducts() {
   const [stockItem, setStockItem] = useState(null);
   const [stockDelta, setStockDelta] = useState(0);
 
+  const query = params.get('q') || '';
   const status = params.get('status') || '';
   const category = params.get('category') || '';
   const page = Number(params.get('page') || 1);
   const sort = params.get('sort') || 'newest';
 
-  const load = () => {
+  const load = useCallback(() => {
     setData(null);
-    get(`/products/admin/all?${qs({ status, category, q, sort, page, limit: 20 })}`)
+    get(`/products/admin/all?${qs({ status, category, q: query, sort, page, limit: 20 })}`)
       .then(setData)
       .catch((e) => toast(e.message, 'error'));
-  };
+  }, [status, category, query, sort, page]);
 
   useEffect(() => {
     load();
-  }, [status, category, page, sort, params.get('q')]);
+  }, [load]);
+
+  useEffect(() => {
+    setQ(query);
+  }, [query]);
 
   useEffect(() => {
     get('/categories?flat=1').then((d) => setCategories(d.items)).catch(() => {});

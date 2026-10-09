@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { all, get, nowIso, run, uid } from '../db/index.js';
+import { all, nowIso, run, uid } from '../db/index.js';
 
 /**
  * WebAuthn / Passkeys registration and challenge helpers.

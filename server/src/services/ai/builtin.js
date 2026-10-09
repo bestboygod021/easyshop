@@ -53,7 +53,6 @@ export function builtinProduct({ brief = '', category = '', price, brand, count 
   const priceValue = Number(price) || 1_200_000 + (Math.abs(hash(seed)) % 90) * 250_000;
   const features = pickMany(FEATURES, 4, seed).length ? pickMany(FEATURES, 4, seed) : FEATURES.slice(0, 4);
 
-  const bullet = features.map((f) => `• ${f}`).join('\n');
   const description_fa = `<h3>معرفی ${name_fa}</h3>
 <p>${name_fa} یکی از گزینه‌های منتخب دسته‌بندی «${cat}» در فروشگاه EasyShop است؛ محصولی که با تمرکز بر کیفیت ساخت، کارایی روزمره و قیمت منصفانه انتخاب شده است. اگر به دنبال گزینه‌ای مطمئن با پشتیبانی رسمی و ارسال سریع هستید، این محصول انتخاب مناسبی است.</p>
 <h3>ویژگی‌های کلیدی</h3>

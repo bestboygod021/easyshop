@@ -1,0 +1,89 @@
+# TEMPLATE / DO NOT APPLY until the PostgreSQL cutover and staging gates are complete.
+apiVersion: v1
+kind: Service
+metadata:
+  name: easyshop-api-stable
+  namespace: easyshop
+  labels:
+    app.kubernetes.io/name: easyshop-api
+    app.kubernetes.io/component: api
+spec:
+  selector:
+    app.kubernetes.io/name: easyshop-api
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http
+    - name: metrics
+      port: 4000
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: easyshop-api-canary
+  namespace: easyshop
+  labels:
+    app.kubernetes.io/name: easyshop-api
+    app.kubernetes.io/component: api
+spec:
+  selector:
+    app.kubernetes.io/name: easyshop-api
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http
+    - name: metrics
+      port: 4000
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: easyshop-api
+  namespace: easyshop
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [shop.example.invalid]
+      secretName: easyshop-staging-tls
+  rules:
+    - host: shop.example.invalid
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: easyshop-api-stable
+                port:
+                  name: http
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: easyshop-api
+  namespace: easyshop
+  labels:
+    app.kubernetes.io/name: easyshop-api
+spec:
+  namespaceSelector:
+    matchNames: [easyshop]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: easyshop-api
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+      authorization:
+        type: Bearer
+        credentials:
+          name: easyshop-metrics-auth
+          key: token
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_service_name]
+          targetLabel: easyshop_service

@@ -1,0 +1,30 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: easyshop-oncall
+  group_by: [alertname, service]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - severity="critical"
+      receiver: easyshop-oncall
+      repeat_interval: 15m
+      continue: false
+
+receivers:
+  - name: easyshop-oncall
+    webhook_configs:
+      - url_file: /etc/alertmanager/secrets/easyshop-oncall-webhook-url
+        send_resolved: true
+        max_alerts: 20
+        timeout: 10s
+
+inhibit_rules:
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: [alertname, service]

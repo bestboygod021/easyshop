@@ -1,4 +1,4 @@
-import { all, get, nowIso } from '../db/index.js';
+import { get, nowIso } from '../db/index.js';
 
 /**
  * محاسبه‌گر شاخص سلامت فروشنده و سیستم هشدار تعلیق حساب

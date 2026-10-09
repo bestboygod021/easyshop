@@ -198,13 +198,14 @@ export const Tabs = ({ tabs, active, onChange, className }) => (
 
 /* --------------------------------- صفحه‌بندی ------------------------------ */
 export const Pagination = ({ page, pages, onChange }) => {
-  if (!pages || pages <= 1) return null;
   const list = useMemo(() => {
+    if (!pages || pages <= 1) return [];
     const out = [];
     const start = Math.max(1, Math.min(page - 2, pages - 4));
     for (let i = start; i < start + 5 && i <= pages; i += 1) out.push(i);
     return out;
   }, [page, pages]);
+  if (!pages || pages <= 1) return null;
   return (
     <div className="flex items-center justify-center gap-1.5">
       <button disabled={page <= 1} onClick={() => onChange(page - 1)} className="btn-ghost btn-sm disabled:opacity-40">

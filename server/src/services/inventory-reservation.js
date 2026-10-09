@@ -1,4 +1,4 @@
-import { all, get, run, tx } from '../db/index.js';
+import { all, run, tx } from '../db/index.js';
 
 /**
  * زمان پیش‌فرض انقضای رزرو موجودی بر حسب دقیقه (مثلاً ۱۵ دقیقه)

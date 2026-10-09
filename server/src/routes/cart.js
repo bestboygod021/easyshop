@@ -131,7 +131,7 @@ router.post(
   rateLimit({ max: 10, windowMs: 10 * 60_000, scope: 'cart-coupon' }),
   asyncHandler((req, res) => {
     const code = String(req.body?.code || '').trim().toUpperCase().slice(0, 40);
-    if (code && !/^[A-Z0-9_\-]{3,40}$/.test(code)) return fail(res, 'کد تخفیف نامعتبر است.');
+    if (code && !/^[A-Z0-9_-]{3,40}$/.test(code)) return fail(res, 'کد تخفیف نامعتبر است.');
     const cart = getCart(req.user?.id ?? null, sessionOf(req));
     if (!code) {
       run('UPDATE carts SET coupon_code = NULL WHERE id = ?', cart.id);

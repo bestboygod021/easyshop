@@ -107,7 +107,7 @@ async function call(method, url, { token, body, headers = {}, session, raw = fal
   });
   if (raw) return res;
   const text = await res.text();
-  let json = null;
+  let json;
   try {
     json = text ? JSON.parse(text) : null;
   } catch {
@@ -201,6 +201,9 @@ describe('امنیت — احراز هویت و مدیریت نشست', () => {
     const first = await post('/api/auth/refresh', { refreshToken: rt });
     assert.equal(first.status, 200);
     assert.ok(first.body.session.accessToken);
+    assert.notEqual(first.body.session.accessToken, rt, 'access token باید از refresh token جدا باشد');
+    const authenticated = await get('/api/auth/me', { token: first.body.session.accessToken });
+    assert.equal(authenticated.status, 200, 'access token تازه‌شده باید برای API محافظت‌شده معتبر باشد');
 
     // استفاده‌ی مجدد از همان توکن (نشانه‌ی سرقت) باید رد شود و همه‌ی توکن‌های خانواده را باطل کند
     const replay = await post('/api/auth/refresh', { refreshToken: rt });
@@ -281,7 +284,7 @@ describe('امنیت — کنترل دسترسی و IDOR', () => {
     const reg = await post('/api/auth/register', { email, password: 'Idor#Pass2026', full_name: 'کاربر دوم آیدی', phone: '09120000003' });
     otherToken = reg.body.session.accessToken;
 
-    const { body: list } = await get('/api/products?limit=1');
+    const { body: list } = await get('/api/products?limit=100');
     const product = list.items.find((p) => p.stock > 2);
     await post('/api/cart/items', { product_id: product.id, qty: 1 }, { token: tokens.user, session: sessionKey() });
     const checkout = await post('/api/orders/checkout', {
@@ -296,6 +299,16 @@ describe('امنیت — کنترل دسترسی و IDOR', () => {
   it('کاربر دیگر نمی‌تواند سفارش متعلق به دیگری را ببیند', async () => {
     const { status } = await get(`/api/orders/${ownerOrder.id}`, { token: otherToken });
     assert.equal(status, 403);
+  });
+
+  it('فاکتور واترمارک‌دار فقط برای مالک یا کارکنان مجاز است', async () => {
+    const anonymous = await get(`/api/orders/${ownerOrder.id}/watermarked-invoice`);
+    assert.equal(anonymous.status, 401);
+    const other = await get(`/api/orders/${ownerOrder.id}/watermarked-invoice`, { token: otherToken });
+    assert.equal(other.status, 403);
+    const owner = await get(`/api/orders/${ownerOrder.id}/watermarked-invoice`, { token: tokens.user });
+    assert.equal(owner.status, 200);
+    assert.match(owner.body.html_content, /صورت‌حساب رسمی/);
   });
 
   it('کاربر دیگر نمی‌تواند سفارش دیگری را پرداخت کند (IDOR پرداخت)', async () => {
@@ -700,8 +713,15 @@ describe('امنیت — هدرها، مبدأ و نشت اطلاعات', () => 
   });
 
   it('پاسخ‌های خصوصی با no-store علامت‌گذاری می‌شوند', async () => {
-    const res = await get('/api/orders', { token: tokens.user, raw: true });
-    assert.match(res.headers.get('cache-control') || '', /no-store/);
+    for (const [url, token] of [
+      ['/api/orders', tokens.user],
+      ['/api/auth/me', tokens.user],
+      ['/api/admin/settings', tokens.admin],
+      ['/api/ai/providers', tokens.admin],
+    ]) {
+      const res = await get(url, { token, raw: true });
+      assert.match(res.headers.get('cache-control') || '', /no-store/, `${url} نباید cache شود`);
+    }
   });
 
   it('فهرست کاربران عمومی نشده است', async () => {
@@ -746,7 +766,7 @@ describe('امنیت — هدرها، مبدأ و نشت اطلاعات', () => 
 /* ============= ۸) منطق کسب‌وکار (پرداخت، موجودی، کیف پول، نظر) ============= */
 describe('امنیت — منطق کسب‌وکار', () => {
   it('ثبت سفارش با مقدار qty منفی یا صفر ممکن نیست', async () => {
-    const { body: list } = await get('/api/products?limit=1');
+    const { body: list } = await get('/api/products?limit=100');
     const product = list.items.find((p) => p.stock > 1);
     const session = sessionKey();
     const neg = await post('/api/cart/items', { product_id: product.id, qty: -5 }, { session });
@@ -873,13 +893,13 @@ describe('امنیت — منطق کسب‌وکار', () => {
   });
 
   it('سفارش مهمان فقط با شماره تماس ثبت‌شده قابل مشاهده است', async () => {
-    const { body: list } = await get('/api/products?limit=1');
+    const { body: list } = await get('/api/products?limit=100');
     const product = list.items.find((p) => p.stock > 0);
     const session = sessionKey();
     await post('/api/cart/items', { product_id: product.id, qty: 1 }, { session });
     const checkout = await post('/api/orders/checkout', {
       address: { receiver: 'مهمان تستی', phone: '09129876543', province: 'تهران', city: 'تهران', line: 'میدان آزادی', postal_code: '1234567890' },
-      shipping_method: 'post', payment_method: 'cod',
+      shipping_method: 'peyk', payment_method: 'cod',
     }, { session });
     assert.equal(checkout.status, 201);
     const wrong = await get(`/api/orders/${checkout.body.order.id}?phone=09000000000`, { session });
@@ -1261,7 +1281,6 @@ describe('امنیت — اعتبارسنجی نوشتن کاتالوگ و سف�
     security.resetRateLimits();
     let got429 = false;
     for (let i = 0; i < 45; i += 1) {
-      // eslint-disable-next-line no-await-in-loop
       const res = await post('/api/account/addresses', {
         title: `آدرس ${i}`, full_name: 'کاربر تست', phone: '09100000000', address: `تهران، پلاک ${i}`, city: 'تهران',
       }, { token: tokens.user });

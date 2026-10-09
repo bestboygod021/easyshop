@@ -35,7 +35,7 @@ export function generateInvoiceQrSvg(text, options = {}) {
 
   for (let r = 0; r < matrixSize; r++) {
     for (let c = 0; c < matrixSize; c++) {
-      let filled = false;
+      let filled;
 
       if (isCorner(r, c)) {
         // الگو در ۳ گوشه

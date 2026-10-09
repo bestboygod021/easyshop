@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowRight, Send, Star, ShieldCheck, Bot } from 'lucide-react';
 import { get, post } from '../../lib/api';
@@ -16,11 +16,11 @@ export default function TicketDetail() {
   const [aiBusy, setAiBusy] = useState(false);
   const endRef = useRef(null);
 
-  const load = () => get(`/tickets/${id}`).then(setData).catch((e) => toast(e.message, 'error'));
+  const load = useCallback(() => get(`/tickets/${id}`).then(setData).catch((e) => toast(e.message, 'error')), [id]);
 
   useEffect(() => {
     load();
-  }, [id]);
+  }, [load]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });

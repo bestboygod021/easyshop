@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   ArrowRight, Headphones, Send, Sparkles, Lock, Star, Paperclip, CheckCircle2, UserCheck,
@@ -19,10 +19,10 @@ export default function AdminTicketDetail() {
   const [agents, setAgents] = useState([]);
   const endRef = useRef(null);
 
-  const load = () =>
+  const load = useCallback(() =>
     get(`/tickets/${id}`)
       .then((d) => setTicket(d.ticket))
-      .catch((e) => toast(e.message, 'error'));
+      .catch((e) => toast(e.message, 'error')), [id]);
 
   useEffect(() => {
     load();
@@ -32,7 +32,7 @@ export default function AdminTicketDetail() {
       if (msg.type === 'ticket:reply' && msg.ticket?.id === id) load();
     });
     return off;
-  }, [id]);
+  }, [id, load]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });

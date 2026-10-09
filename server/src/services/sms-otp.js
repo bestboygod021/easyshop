@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { get, run, all } from '../db/index.js';
+import { get, run } from '../db/index.js';
 
 /**
  * مدیریت احراز هویت دو مرحله‌ای و بازیابی حساب با پیامک رمز یکبار مصرف (SMS OTP)

@@ -1,4 +1,4 @@
-import { all, get, nowIso } from '../db/index.js';
+import { all, get } from '../db/index.js';
 
 /**
  * سیستم پیش‌بینی زمان پایان موجودی انبار (Stock Depletion Forecaster)

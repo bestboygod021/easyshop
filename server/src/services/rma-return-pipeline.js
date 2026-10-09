@@ -85,11 +85,12 @@ export class RmaReturnPipelineService {
 
     run(
       `UPDATE rma_returns 
-       SET status = ?, refund_amount = ?, review_notes = ?, updated_at = ?
+       SET status = ?, refund_amount = ?, review_notes = ?, inspector_id = ?, updated_at = ?
        WHERE id = ?`,
       newStatus,
       refundAmount,
       notes,
+      inspectorId,
       now,
       rmaId,
     );
@@ -99,6 +100,7 @@ export class RmaReturnPipelineService {
       previous_status: record.status,
       new_status: newStatus,
       refund_amount: refundAmount,
+      inspector_id: inspectorId,
       notes,
       updated_at: now,
     };

@@ -42,8 +42,8 @@ export function sessionKey() {
   if (!key || !/^[A-Za-z0-9_-]{8,64}$/.test(key)) {
     // کلید سبد مهمان با منبع تصادفی امن ساخته می‌شود (حدس‌ناپذیر در برابر سرقت سبد)
     const bytes = new Uint8Array(16);
-    if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(bytes);
-    else for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+    if (!globalThis.crypto?.getRandomValues) throw new Error('Secure random source is unavailable; refusing to create a predictable session key.');
+    globalThis.crypto.getRandomValues(bytes);
     key = `sess_${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`;
     localStorage.setItem(SESSION_KEY, key);
   }
@@ -119,7 +119,7 @@ export async function api(path, options = {}) {
   if (raw) return res;
 
   const text = await res.text();
-  let data = null;
+  let data;
   try {
     data = text ? JSON.parse(text) : null;
   } catch {

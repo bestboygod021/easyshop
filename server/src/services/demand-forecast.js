@@ -1,4 +1,4 @@
-import { all, get } from '../db/index.js';
+import { all } from '../db/index.js';
 
 /**
  * سرویس پیش‌بینی تقاضا و سفارش‌گذاری هوشمند انبار (Demand Forecasting & Reorder Advisor)

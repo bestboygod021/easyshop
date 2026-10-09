@@ -28,7 +28,7 @@ export class SecretManager {
   }
 
   getSecret(key, defaultValue = '') {
-    if (!key || typeof key !== 'string') return defaultValue;
+    if (!key || typeof key !== 'string' || !/^[A-Z][A-Z0-9_]{0,127}$/.test(key)) return defaultValue;
 
     const now = Date.now();
     const cached = this._cache.get(key);
@@ -36,17 +36,17 @@ export class SecretManager {
       return cached.val;
     }
 
-    let valToCache = defaultValue;
-
-    // ۱. اولویت با فایل محرمانه‌ی mount شده (Docker/Kubernetes Secret)
-    if (this.secretsDir) {
+    // ۱. اولویت با فایل محرمانه‌ی mount شده (برای نمونه Vault Agent/CSI)
+    if (this.secretsDir && path.isAbsolute(this.secretsDir)) {
       try {
-        const filePath = path.join(this.secretsDir, key);
-        if (fs.existsSync(filePath)) {
-          const content = fs.readFileSync(filePath, 'utf8');
+        const realDirectory = fs.realpathSync(this.secretsDir);
+        const filePath = path.join(realDirectory, key);
+        const realFilePath = fs.realpathSync(filePath);
+        const relativePath = path.relative(realDirectory, realFilePath);
+        if (!relativePath.startsWith('..') && !path.isAbsolute(relativePath) && fs.statSync(realFilePath).isFile()) {
+          const content = fs.readFileSync(realFilePath, 'utf8');
           const trimmed = sanitizeSecretValue(content);
           if (trimmed) {
-            valToCache = trimmed;
             this._cache.set(key, { val: trimmed, expiresAt: now + this.cacheTtlMs });
             return trimmed;
           }

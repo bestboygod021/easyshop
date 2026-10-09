@@ -1,0 +1,64 @@
+# TEMPLATE / DO NOT APPLY until Prometheus Operator, NGINX Ingress, and canary Service labels are verified.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: easyshop-canary-sli
+  namespace: easyshop
+spec:
+  metrics:
+    - name: minimum-canary-traffic
+      interval: 1m
+      count: 3
+      failureLimit: 1
+      successCondition: result[0] >= 20
+      provider:
+        prometheus:
+          address: http://prometheus-operated.monitoring.svc:9090
+          query: |
+            sum(increase(easyshop_http_requests_total{
+              easyshop_service="easyshop-api-canary",
+              path!="/metrics",
+              path!="/api/health",
+              path!="/health"
+            }[5m]))
+    - name: canary-http-5xx-ratio
+      interval: 1m
+      count: 3
+      failureLimit: 1
+      successCondition: result[0] < 0.01
+      provider:
+        prometheus:
+          address: http://prometheus-operated.monitoring.svc:9090
+          query: |
+            sum(rate(easyshop_http_requests_total{
+              easyshop_service="easyshop-api-canary",
+              status=~"5..",
+              path!="/metrics",
+              path!="/api/health",
+              path!="/health"
+            }[5m]))
+            /
+            clamp_min(sum(rate(easyshop_http_requests_total{
+              easyshop_service="easyshop-api-canary",
+              path!="/metrics",
+              path!="/api/health",
+              path!="/health"
+            }[5m])), 0.001)
+    - name: canary-http-p95-ms
+      interval: 1m
+      count: 3
+      failureLimit: 1
+      successCondition: result[0] < 750
+      provider:
+        prometheus:
+          address: http://prometheus-operated.monitoring.svc:9090
+          query: |
+            histogram_quantile(
+              0.95,
+              sum by (le) (rate(easyshop_http_request_duration_ms_bucket{
+                easyshop_service="easyshop-api-canary",
+                path!="/metrics",
+                path!="/api/health",
+                path!="/health"
+              }[5m]))
+            )

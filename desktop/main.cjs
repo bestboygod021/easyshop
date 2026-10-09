@@ -10,6 +10,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const http = require('node:http');
 const { fork } = require('node:child_process');
+const crypto = require('node:crypto');
 
 const isDev = process.env.EASYSHOP_DEV === '1';
 const DEV_URL = process.env.EASYSHOP_DEV_URL || 'http://localhost:5173';
@@ -31,6 +32,21 @@ function resolveServerEntry() {
   return candidates.find((p) => fs.existsSync(p)) || null;
 }
 
+function persistentSecret(filename) {
+  const dataDir = app.getPath('userData');
+  fs.mkdirSync(dataDir, { recursive: true });
+  const secretPath = path.join(dataDir, filename);
+  try {
+    const existing = fs.readFileSync(secretPath, 'utf8').trim();
+    if (Buffer.byteLength(existing, 'utf8') >= 32) return existing;
+  } catch {
+    /* create a per-install secret below */
+  }
+  const secret = crypto.randomBytes(48).toString('base64url');
+  fs.writeFileSync(secretPath, secret, { encoding: 'utf8', mode: 0o600 });
+  return secret;
+}
+
 function startServer() {
   const entry = resolveServerEntry();
   if (!entry) {
@@ -40,7 +56,21 @@ function startServer() {
   const cwd = path.dirname(path.dirname(entry)); // پوشه server
   const child = fork(entry, [], {
     cwd,
-    env: { ...process.env, PORT: String(PORT), HOST: '0.0.0.0', NODE_ENV: 'production' },
+    env: {
+      ...process.env,
+      PORT: String(PORT),
+      HOST,
+      NODE_ENV: 'production',
+      ELECTRON_RUN_AS_NODE: '1',
+      DATA_DIR: path.join(app.getPath('userData'), 'data'),
+      UPLOAD_DIR: path.join(app.getPath('userData'), 'uploads'),
+      JWT_SECRET: process.env.JWT_SECRET || persistentSecret('jwt-secret'),
+      AI_KEY_ENCRYPTION_KEY: process.env.AI_KEY_ENCRYPTION_KEY || persistentSecret('ai-key-encryption-secret'),
+      ALLOW_SELF_PROMOTION: '0',
+      SEED_DEMO_DATA: process.env.SEED_DEMO_DATA || '0',
+      CORS_ORIGINS: '',
+      TRUSTED_ORIGINS: `http://${HOST}:${PORT}`,
+    },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
   child.stdout?.on('data', (d) => {

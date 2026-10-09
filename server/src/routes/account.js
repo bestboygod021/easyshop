@@ -1,6 +1,6 @@
 import express from 'express';
-import { all, get, getSettings, nowIso, parseJson, run, tx, uid } from '../db/index.js';
-import { logAudit, requireAuth } from '../middleware/auth.js';
+import { all, get, getSettings, nowIso, run, tx, uid } from '../db/index.js';
+import { logAudit, requireAuth, verifyPassword } from '../middleware/auth.js';
 import { asyncHandler, fail, ok, paginate, productPublic } from '../utils/helpers.js';
 import { config } from '../config.js';
 import { cleanText, clientIp, rateLimit } from '../middleware/security.js';
@@ -76,6 +76,43 @@ router.delete(
   asyncHandler((req, res) => {
     run('DELETE FROM addresses WHERE id = ? AND user_id = ?', req.params.id, req.user.id);
     return ok(res, { message: 'آدرس حذف شد.' });
+  }),
+);
+
+/* ----------------------------- درخواست‌های حریم خصوصی ----------------------------- */
+router.get(
+  '/privacy-requests',
+  asyncHandler((req, res) => ok(res, {
+    items: all(`SELECT id, request_type, status, requested_at, reviewed_at
+      FROM privacy_requests WHERE user_id = ? ORDER BY requested_at DESC LIMIT 50`, req.user.id),
+  })),
+);
+
+router.post(
+  '/privacy-requests',
+  rateLimit({ ...config.security.rateLimits.write, scope: 'privacy-request-create' }),
+  asyncHandler((req, res) => {
+    const requestType = String(req.body?.request_type || '');
+    if (!['access', 'erasure'].includes(requestType)) {
+      return fail(res, 'نوع درخواست باید access یا erasure باشد.');
+    }
+    if (requestType === 'erasure') {
+      const user = get('SELECT password_hash FROM users WHERE id = ?', req.user.id);
+      if (!user || typeof req.body?.password !== 'string' || !verifyPassword(req.body.password, user.password_hash)) {
+        return fail(res, 'برای درخواست حذف داده، رمز عبور فعلی را تأیید کنید.', 403);
+      }
+    }
+    const pending = get("SELECT id FROM privacy_requests WHERE user_id=? AND status IN ('pending','approved') LIMIT 1", req.user.id);
+    if (pending) return fail(res, 'یک درخواست حریم خصوصی در حال بررسی دارید.', 409);
+    const id = uid('prv');
+    const requestedAt = nowIso();
+    run(`INSERT INTO privacy_requests (id,user_id,request_type,status,requested_at)
+      VALUES (?,?,?,'pending',?)`, id, req.user.id, requestType, requestedAt);
+    logAudit(req, 'privacy_request_submitted', 'privacy_request', id, { request_type: requestType });
+    return ok(res, {
+      request: { id, request_type: requestType, status: 'pending', requested_at: requestedAt },
+      message: 'درخواست ثبت شد و پس از بررسی پشتیبانی پیگیری می‌شود.',
+    }, 201);
   }),
 );
 
@@ -195,7 +232,7 @@ router.post(
 router.get(
   '/notifications',
   asyncHandler((req, res) => {
-    const { page, limit, offset } = paginate(req, 30, 100);
+    const { limit, offset } = paginate(req, 30, 100);
     const items = all('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?', req.user.id, limit, offset);
     const unread = get('SELECT COUNT(*) c FROM notifications WHERE user_id = ? AND is_read = 0', req.user.id).c;
     return ok(res, { items, unread });

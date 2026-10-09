@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
 
 @layer base {
   :root {
@@ -53,21 +52,24 @@
   .card-hover {
     @apply transition duration-300 hover:-translate-y-1 hover:border-brand-500/40 hover:shadow-glow;
   }
-  .btn {
+  .btn,
+  .btn-primary,
+  .btn-ghost,
+  .btn-danger {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition
       disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn bg-gradient-to-l from-brand-600 to-brand-500 text-white shadow-lg shadow-brand-600/25 hover:from-brand-500 hover:to-brand-400;
+    @apply bg-gradient-to-l from-brand-600 to-brand-500 text-white shadow-lg shadow-brand-600/25 hover:from-brand-500 hover:to-brand-400;
   }
   .btn-ghost {
-    @apply btn border border-white/10 bg-white/5 text-slate-200 hover:border-brand-500/40 hover:bg-white/10;
+    @apply border border-white/10 bg-white/5 text-slate-200 hover:border-brand-500/40 hover:bg-white/10;
   }
   html:not(.dark) .btn-ghost {
     @apply border-slate-200 bg-white text-slate-700 hover:bg-slate-50;
   }
   .btn-danger {
-    @apply btn bg-rose-600/90 text-white hover:bg-rose-500;
+    @apply bg-rose-600/90 text-white hover:bg-rose-500;
   }
   .btn-sm {
     @apply px-3 py-1.5 text-xs;

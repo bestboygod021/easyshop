@@ -1,4 +1,4 @@
-import { all, get, productPublic } from '../utils/helpers.js';
+import { all, productPublic } from '../utils/helpers.js';
 
 /**
  * Recommends complementary products based on collaborative co-occurrence in orders.

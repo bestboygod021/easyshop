@@ -1,6 +1,7 @@
-/* EasyShop Service Worker — کش دارایی‌های استاتیک و شبکه‌اول برای API */
-const CACHE = 'easyshop-v1';
+/* EasyShop Service Worker — کش دارایی‌های استاتیک؛ API همیشه network-only */
+const CACHE = 'easyshop-v2';
 const ASSETS = ['/', '/index.html', '/manifest.webmanifest', '/favicon.svg'];
+const API_OFFLINE_BODY = JSON.stringify({ ok: false, error: 'آفلاین هستید؛ اطلاعات حساب از کش خوانده نمی‌شود.' });
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -18,16 +19,16 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // API همیشه از شبکه (با بازگشت به کش در حالت آفلاین)
-  if (url.pathname.startsWith('/api/')) {
+  // پاسخ API ممکن است شامل سفارش، پروفایل یا اطلاعات خصوصی باشد؛ هرگز cache نکن.
+  if (/^\/api(?:\/|$)/.test(url.pathname)) {
     event.respondWith(
-      fetch(request)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(request, copy));
-          return res;
-        })
-        .catch(() => caches.match(request).then((r) => r || new Response(JSON.stringify({ ok: false, error: 'آفلاین هستید' }), { headers: { 'content-type': 'application/json' } }))),
+      fetch(request).catch(() => new Response(API_OFFLINE_BODY, {
+        status: 503,
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-store, private',
+        },
+      })),
     );
     return;
   }
@@ -39,8 +40,10 @@ self.addEventListener('fetch', (event) => {
         (cached) =>
           cached ||
           fetch(request).then((res) => {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(request, copy));
+            if (res.ok) {
+              const copy = res.clone();
+              caches.open(CACHE).then((c) => c.put(request, copy));
+            }
             return res;
           }),
       ),
@@ -52,8 +55,10 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(request)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(request, copy));
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(request, copy));
+        }
         return res;
       })
       .catch(() => caches.match(request).then((r) => r || caches.match('/index.html'))),

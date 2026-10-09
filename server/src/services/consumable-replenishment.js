@@ -1,4 +1,4 @@
-import { all, get, run } from '../db/index.js';
+import { all } from '../db/index.js';
 
 /**
  * سرویس یادآور و پیشنهاد شارژ مجدد کالاهای تکرارپذیر و مصرفی (Consumables Replenishment Alert)

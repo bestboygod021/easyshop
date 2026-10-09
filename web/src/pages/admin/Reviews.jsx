@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Star, Check, X, MessageSquare, Bot } from 'lucide-react';
 import { get, patch, qs } from '../../lib/api';
 import { number, timeAgo } from '../../lib/format';
@@ -12,16 +12,16 @@ export default function Reviews() {
   const [reply, setReply] = useState(null);
   const [replyText, setReplyText] = useState('');
 
-  const load = () => {
+  const load = useCallback(() => {
     setData(null);
     get(`/admin/reviews?${qs({ status, page, limit: 20 })}`)
       .then(setData)
       .catch((e) => toast(e.message, 'error'));
-  };
+  }, [status, page]);
 
   useEffect(() => {
     load();
-  }, [status, page]);
+  }, [load]);
 
   const update = async (review, payload) => {
     try {

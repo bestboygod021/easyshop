@@ -1,20 +1,27 @@
 import http from 'node:http';
 import path from 'node:path';
+import { timingSafeEqual } from 'node:crypto';
 import fs from 'node:fs';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import { config, ROOT } from './config.js';
+import { config, ROOT, validateProductionConfig } from './config.js';
 import { db, get, isSeeded } from './db/index.js';
 import { runSeed, seedProviders } from './db/seed.js';
 import { initRealtime, onlineStats, pushNotification } from './realtime/hub.js';
 import { HttpError } from './utils/helpers.js';
+import { migrateStoredAiProviderKeys } from './services/ai/key-crypto.js';
+import { initializeObservability, shutdownObservability } from './services/observability.js';
+import { metricsMiddleware, metricsRegistry } from './services/metrics.js';
+import { startSloMonitor, stopSloMonitor } from './services/slo-monitor.js';
+import { startDataRetentionScheduler } from './services/data-retention.js';
 
 import authRoutes from './routes/auth.js';
 import productRoutes from './routes/products.js';
 import categoryRoutes from './routes/categories.js';
 import cartRoutes from './routes/cart.js';
 import orderRoutes from './routes/orders.js';
+import paymentRoutes from './routes/payments.js';
 import accountRoutes from './routes/account.js';
 import adminRoutes from './routes/admin.js';
 import ticketRoutes from './routes/tickets.js';
@@ -33,6 +40,7 @@ app.set('trust proxy', config.trustProxy ? 1 : false);
 app.disable('x-powered-by');
 
 app.use(requestId);
+app.use(metricsMiddleware);
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -49,7 +57,12 @@ app.use(
         'manifest-src': ["'self'"],
         'object-src': ["'none'"],
         'base-uri': ["'self'"],
-        'form-action': ["'self'"],
+        'form-action': [
+          "'self'",
+          ...config.payment.bankDirectStartAllowedHosts
+            .filter((host) => /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(host))
+            .map((host) => `https://${host}`),
+        ],
         'frame-ancestors': config.security.frameAncestors,
         ...(config.isProd ? { 'upgrade-insecure-requests': [] } : {}),
       },
@@ -99,8 +112,7 @@ app.use((req, res, next) => {
   const started = Date.now();
   res.on('finish', () => {
     if (config.logLevel === 'debug' || res.statusCode >= 400) {
-      // eslint-disable-next-line no-console
-      console.log(`${req.method} ${req.originalUrl} → ${res.statusCode} (${Date.now() - started}ms) [${req.id}] ${clientIp(req)}`);
+      console.log(`${req.method} ${req.originalUrl} → ${res.statusCode} (${Date.now() - started}ms) [${req.id}] [trace:${req.traceId || '-'}] ${clientIp(req)}`);
     }
   });
   next();
@@ -124,7 +136,7 @@ app.use(
 // --- API ---------------------------------------------------------------------
 const api = express.Router();
 api.use(rateLimit({ ...config.security.rateLimits.global, scope: 'api' }));
-api.use(['/account', '/orders', '/cart', '/tickets', '/chat'], (req, res, next) => {
+api.use(['/auth', '/account', '/orders', '/cart', '/tickets', '/chat', '/admin', '/ai'], (req, res, next) => {
   res.setHeader('cache-control', 'no-store, private');
   next();
 });
@@ -133,6 +145,7 @@ api.use('/products', productRoutes);
 api.use('/categories', categoryRoutes);
 api.use('/cart', cartRoutes);
 api.use('/orders', orderRoutes);
+api.use('/payments', paymentRoutes);
 api.use('/account', accountRoutes);
 api.use('/admin', adminRoutes);
 api.use('/tickets', ticketRoutes);
@@ -148,12 +161,32 @@ app.get('/api', (_req, res) =>
     version: '1.0.0',
     docs: '/api/docs',
     endpoints: [
-      '/api/auth', '/api/products', '/api/categories', '/api/cart', '/api/orders',
+      '/api/auth', '/api/products', '/api/categories', '/api/cart', '/api/orders', '/api/payments',
       '/api/account', '/api/admin', '/api/tickets', '/api/chat', '/api/ai', '/api/settings',
     ],
     realtime: '/ws',
   }),
 );
+
+app.get('/metrics', (req, res) => {
+  const token = config.observability.metricsBearerToken;
+  if (config.isProd && !token) return res.sendStatus(404);
+  if (token) {
+    const authorization = String(req.get('authorization') || '');
+    const provided = authorization.replace(/^Bearer\s+/i, '');
+    const expectedBuffer = Buffer.from(token);
+    const providedBuffer = Buffer.from(provided);
+    const valid = expectedBuffer.length === providedBuffer.length
+      && timingSafeEqual(expectedBuffer, providedBuffer);
+    if (!valid) {
+      res.setHeader('www-authenticate', 'Bearer');
+      return res.sendStatus(401);
+    }
+  }
+  res.setHeader('cache-control', 'no-store, private');
+  res.type('text/plain; version=0.0.4; charset=utf-8');
+  return res.status(200).send(metricsRegistry.toPrometheusText());
+});
 
 // --- پیش‌نمایش وب (PWA build) -------------------------------------------------
 const webDist = path.resolve(ROOT, '..', 'web', 'dist');
@@ -189,7 +222,6 @@ app.use((req, res) => res.status(404).json({ ok: false, error: 'مسیر یاف�
 app.use((err, req, res, _next) => {
   const status = err instanceof HttpError ? err.status : err.status || 500;
   if (status >= 500) {
-    // eslint-disable-next-line no-console
     console.error(`❌ [${req.id || '-'}] ${req.method} ${req.originalUrl}`, err);
   }
   // درخواست‌های بزرگ/نامعتبر بدنه پیام واضح می‌گیرند
@@ -214,6 +246,7 @@ app.use((err, req, res, _next) => {
 
 // --- راه‌اندازی ----------------------------------------------------------------
 export function bootstrap() {
+  validateProductionConfig();
   if (config.isProd && config.corsOrigins.includes('*')) {
     console.warn('⚠️  CORS_ORIGINS=* در محیط تولید ناامن است؛ فهرست دامنه‌های مجاز را تعیین کنید.');
   }
@@ -221,6 +254,8 @@ export function bootstrap() {
     console.warn('⚠️  TRUSTED_ORIGINS تنظیم نشده است؛ فقط same-origin و دامنه‌های پیش‌نمایش مجاز خواهند بود.');
   }
   seedProviders();
+  const aiKeyMigration = migrateStoredAiProviderKeys();
+  if (aiKeyMigration.migrated) console.info(`🔐 کلیدهای AI در پایگاه داده رمز شدند: ${aiKeyMigration.migrated}`);
   if (config.seedDemoData && !isSeeded()) {
     const res = runSeed();
     console.log('🌱 داده‌های دمو ایجاد شد:', res);
@@ -235,7 +270,10 @@ export function bootstrap() {
 
 const isMain = process.argv[1] && (process.argv[1].endsWith('index.js') || process.argv[1].endsWith('server'));
 if (isMain) {
+  initializeObservability();
   const counts = bootstrap();
+  startSloMonitor();
+  const stopDataRetention = startDataRetentionScheduler();
   const server = http.createServer(app);
   initRealtime(server);
 
@@ -251,12 +289,15 @@ if (isMain) {
 
   const shutdown = (signal) => {
     console.log(`\n${signal}: خاموش‌سازی تدریجی…`, onlineStats());
-    server.close(() => {
+    stopSloMonitor();
+    stopDataRetention();
+    server.close(async () => {
       try {
         db.close();
       } catch {
         /* ignore */
       }
+      await shutdownObservability();
       process.exit(0);
     });
     setTimeout(() => process.exit(0), 5000);

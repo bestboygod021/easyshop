@@ -9,6 +9,7 @@ import {
 import { aiComplete, getProvider, listProviders } from '../services/ai/gateway.js';
 import { PROVIDER_CATALOG } from '../services/ai/providers.js';
 import { config } from '../config.js';
+import { encryptAiKey, isEncryptedAiKey } from '../services/ai/key-crypto.js';
 import { cleanText, rateLimit } from '../middleware/security.js';
 
 const router = express.Router();
@@ -100,9 +101,19 @@ router.put(
     const provider = get('SELECT * FROM ai_providers WHERE slug = ?', req.params.slug);
     if (!provider) return fail(res, 'ارائه‌دهنده یافت نشد.', 404);
     const b = req.body || {};
-    // فقط فیلدهای مجاز و با اعتبارسنجی نوع/محدوده
-    if (b.api_key !== undefined && String(b.api_key).length > 300) return fail(res, 'کلید API بیش از حد طولانی است.');
-    if (b.base_url !== undefined && b.base_url && !/^https?:\/\/[\w.\-]+(:\d+)?(\/[\w.\-/]*)?$/.test(String(b.base_url))) {
+    // کلید خام پیش از ذخیره با AES-256-GCM رمز می‌شود و هرگز در audit log بازتاب نمی‌یابد.
+    let encryptedApiKey = null;
+    if (b.api_key !== undefined && b.api_key !== null && b.api_key !== '') {
+      if (typeof b.api_key !== 'string' || b.api_key.trim().length > 300) return fail(res, 'کلید API نامعتبر یا بیش از حد طولانی است.');
+      const apiKey = b.api_key.trim();
+      if (isEncryptedAiKey(apiKey)) return fail(res, 'کلید خام API را وارد کنید، نه مقدار رمز‌شده را.');
+      try {
+        encryptedApiKey = encryptAiKey(apiKey);
+      } catch {
+        return fail(res, 'برای ذخیرهٔ امن کلید AI، AI_KEY_ENCRYPTION_KEY با حداقل ۳۲ بایت باید تنظیم شود.', 503);
+      }
+    }
+    if (b.base_url !== undefined && b.base_url && !/^https?:\/\/[\w.-]+(:\d+)?(\/[\w./-]*)?$/.test(String(b.base_url))) {
       return fail(res, 'آدرس پایه معتبر نیست (فقط http/https).');
     }
     const temperature = b.temperature !== undefined ? Number(b.temperature) : null;
@@ -121,7 +132,7 @@ router.put(
         temperature = COALESCE(?, temperature), max_tokens = COALESCE(?, max_tokens),
         monthly_token_cap = COALESCE(?, monthly_token_cap), notes = COALESCE(?, notes),
         models = COALESCE(?, models), updated_at = ? WHERE slug = ?`,
-      b.api_key === undefined ? null : (b.api_key || null),
+      b.api_key === undefined ? null : encryptedApiKey,
       b.base_url ?? null,
       b.default_model ?? null,
       b.enabled !== undefined ? (b.enabled ? 1 : 0) : null,
@@ -175,11 +186,26 @@ router.put(
   requireAuth,
   requireRole('admin'),
   asyncHandler((req, res) => {
-    const current = getSettings().ai || {};
-    const next = { ...current, ...(req.body || {}) };
+    const body = req.body || {};
+    const allowed = new Set(['default_provider', 'auto_fallback', 'product_auto_publish', 'allow_customer_assistant', 'allow_support_ai']);
+    if (Object.keys(body).some((key) => !allowed.has(key))) return fail(res, 'فیلد تنظیمات نامعتبر است.');
+
+    const next = { ...(getSettings().ai || {}) };
+    for (const [key, value] of Object.entries(body)) {
+      if (key === 'default_provider') {
+        if (typeof value !== 'string' || value.length > 40 || !get('SELECT slug FROM ai_providers WHERE slug = ?', value)) {
+          return fail(res, 'ارائه‌دهندهٔ پیش‌فرض نامعتبر است.');
+        }
+        next[key] = value;
+      } else {
+        if (typeof value !== 'boolean') return fail(res, 'مقدار تنظیمات باید true یا false باشد.');
+        next[key] = value;
+      }
+    }
     setSetting('ai', next);
-    logAudit(req, 'ai_settings_update', 'settings', null, next);
-    return ok(res, { settings: next });
+    const safeSettings = getSettings().ai || {};
+    logAudit(req, 'ai_settings_update', 'settings', null, { keys: Object.keys(body) });
+    return ok(res, { settings: safeSettings });
   }),
 );
 
@@ -512,7 +538,7 @@ router.get(
   requireRole('admin'),
   rateLimit({ ...config.security.rateLimits.readSearch, scope: 'ai-logs' }),
   asyncHandler((req, res) => {
-    const { page, limit, offset } = paginate(req, 50, 200);
+    const { limit, offset } = paginate(req, 50, 200);
     const where = [];
     const params = [];
     if (req.query.provider) {
