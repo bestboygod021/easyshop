@@ -22,7 +22,24 @@ jobs:
       - run: npm run test:ops-preflight
       - run: npm run test:container-image
       - run: npm run test:postgres-staging
-      - run: npm test
+      - name: Run server tests with safe failure annotations
+        shell: bash
+        run: |
+          set +e
+          npm test > "$RUNNER_TEMP/npm-test.log" 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            grep -E '^not ok |^  error:|^  code:' "$RUNNER_TEMP/npm-test.log" | while IFS= read -r line; do
+              line=${line//'%'/'%25'}
+              line=${line//$'\r'/'%0D'}
+              line=${line//$'\n'/'%0A'}
+              printf '::error title=Server test failure::%s\n' "$line"
+            done
+            if ! grep -q '^not ok ' "$RUNNER_TEMP/npm-test.log"; then
+              printf '::error title=Server test command failed::npm test exited with status %s; see step log for details\n' "$status"
+            fi
+          fi
+          exit "$status"
       - run: npm run build
       - run: npm audit --audit-level=high
 
@@ -95,6 +112,34 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_SUMMARY: true
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+      - name: Emit redacted Gitleaks locations for triage
+        if: always()
+        shell: bash
+        run: |
+          report=''
+          for candidate in "$HOME/results.sarif" "$GITHUB_WORKSPACE/results.sarif"; do
+            if [ -f "$candidate" ]; then report="$candidate"; break; fi
+          done
+          if [ -z "$report" ]; then
+            echo '::notice title=Gitleaks report::SARIF report was not present in HOME or the workspace.'
+            exit 0
+          fi
+          node --input-type=module - "$report" <<'NODE'
+          import fs from 'node:fs';
+          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const findings = report.runs?.flatMap((run) => run.results || []) || [];
+          for (const finding of findings) {
+            const location = finding.locations?.[0]?.physicalLocation;
+            const file = location?.artifactLocation?.uri || 'unknown-file';
+            const line = location?.region?.startLine || 0;
+            const commit = finding.partialFingerprints?.commitSha || 'unknown-commit';
+            const fingerprint = `${commit}:${file}:${finding.ruleId}:${line}`;
+            const safe = `rule=${finding.ruleId}; path=${file}; line=${line}; commit=${commit.slice(0, 12)}; ignore_fingerprint=${fingerprint}`
+              .replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A');
+            console.log(`::error title=Redacted Gitleaks finding::${safe}`);
+          }
+          if (findings.length === 0) console.log('::notice title=Gitleaks report::No SARIF findings were present.');
+          NODE
       - run: npm run sbom
       - run: npm run sbom:desktop
       - run: npm run sbom:mobile
@@ -133,4 +178,18 @@ jobs:
       - run: npm audit --prefix desktop --audit-level=high
       - run: npm run build
       - run: npm run desktop:runtime
-      - run: npm --prefix desktop run pack
+      - name: Package desktop runtime with failure diagnostics
+        shell: bash
+        run: |
+          set +e
+          npm --prefix desktop run pack > "$RUNNER_TEMP/desktop-pack.log" 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 20 "$RUNNER_TEMP/desktop-pack.log" | while IFS= read -r line; do
+              line=${line//'%'/'%25'}
+              line=${line//$'\r'/'%0D'}
+              line=${line//$'\n'/'%0A'}
+              printf '::error title=Desktop packaging failure::%s\n' "$line"
+            done
+          fi
+          exit "$status"
