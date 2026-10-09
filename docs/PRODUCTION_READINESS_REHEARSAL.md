@@ -28,7 +28,7 @@ npm run build
 
 ## ۲) PostgreSQL
 
-در این مرحله driver `pg`، repository ناهمگام اختیاری، facade سازگاری SQLite، runner نسخه‌دار/checksumدار و bootstrap DDL کامل ۹۵ جدول وجود دارند. ابزار snapshot importer نیز plan آفلاین، batch/resume، redaction credentialها، payment backfill، digest ردیفی و reconciliation جمع مالی را پیاده می‌کند. چهار تست fixture مصنوعی با PGlite محلی سبز شده‌اند؛ CI برای تست importer روی PostgreSQL 16 موقت هم تنظیم شده، اما برای تغییر فعلی هنوز نتیجهٔ remote CI نداریم. API همچنان helperهای sync و `DatabaseSync` دارد و هیچ domain به repository PostgreSQL وصل نشده، پس gate **مسدود** می‌ماند. مقصد staging را فقط پس از تأیید mapping، snapshot پاک‌سازی‌شده و مسیر بازگشت آماده کنید:
+در این مرحله driver `pg`، repository ناهمگام اختیاری، facade سازگاری SQLite، runner نسخه‌دار/checksumدار و bootstrap DDL کامل ۹۵ جدول وجود دارند. ابزار snapshot importer نیز plan آفلاین، batch/resume، redaction credentialها، payment backfill، digest ردیفی و reconciliation جمع مالی را پیاده می‌کند. تست‌های fixture مصنوعی با PGlite محلی و CI run [37970262910](https://github.com/bestboygod021/easyshop/actions/runs/37970262910) روی PostgreSQL 16 موقت سبز شده‌اند؛ fixture/CI staging واقعی نیستند. API همچنان helperهای sync و `DatabaseSync` دارد و هیچ domain به repository PostgreSQL وصل نشده، پس gate **مسدود** می‌ماند. مقصد staging را فقط پس از تأیید mapping، snapshot پاک‌سازی‌شده و مسیر بازگشت آماده کنید:
 
 ```dotenv
 PG_REHEARSAL_DATABASE_URL=postgresql://<role>:<secret>@<staging-host>/<db>?sslmode=verify-full
@@ -114,8 +114,8 @@ Preflight وجود فایل‌ها/مقادیر را می‌سنجد اما buck
 
 ## وضعیت فعلی این workspace
 
-- ESLint و CI gate: پیاده و محلی قابل‌اجرا؛ اجرای remote GitHub Actions/release واقعی در این تغییر انجام نشده است.
-- PostgreSQL: **blocked**؛ driver، async pilot، schema 95-table، importer/resume، synthetic PGlite tests، و CI job برای PostgreSQL 16 موقت تعریف شده‌اند؛ remote CI این تغییر هنوز اجرا/تأیید نشده، و staging endpoint/TLS، sanitized production snapshot، domain wiring/cutover و restore evidence فراهم نیستند.
+- ESLint و CI gate: پیاده، محلی و remote موفق؛ workflow [37970262910](https://github.com/bestboygod021/easyshop/actions/runs/37970262910) سبز است؛ release یا deployment production انجام نشده.
+- PostgreSQL: **blocked**؛ driver، async pilot، schema 95-table، importer/resume، synthetic PGlite tests و CI run [37970262910](https://github.com/bestboygod021/easyshop/actions/runs/37970262910) برای PostgreSQL 16 موقت موفق‌اند؛ staging endpoint/TLS، sanitized production snapshot، domain wiring/cutover و restore evidence فراهم نیستند.
 - Vault: provider/pattern، policy read-only، Kubernetes workload-identity/Agent templates و file-rotation tests آماده‌اند؛ endpoint، auth role، cluster و live mount متصل نشده‌اند.
 - Payment: local mocked callback tests و evidence template موجودند؛ sandbox E2E، callback reachability، statement و independent review انجام نشده‌اند.
 - Recovery/canary: Kubernetes + Argo Rollouts + ingress-nginx انتخاب و templates/proposed SLO thresholds آماده‌اند؛ image pipeline، PostgreSQL، cluster/router/Prometheus، off-site Object Lock، staging restore و measured RTO/RPO نداریم.
